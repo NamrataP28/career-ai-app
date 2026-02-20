@@ -243,7 +243,3 @@ if uploaded_file:
         ax2.set_ylabel("Market Difficulty (%)")
         ax2.set_xticklabels(results_df["Role"], rotation=45)
         st.pyplot(fig2)
-from openai import OpenAI
-import os
-
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
