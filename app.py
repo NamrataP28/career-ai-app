@@ -1,43 +1,62 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
+import pdfplumber
+import re
+from openai import OpenAI
 
 st.set_page_config(page_title="AI Career Intelligence", layout="wide")
 
-# ---------------------------
-# HEADER
-# ---------------------------
-
 st.title("🚀 AI Career Intelligence Platform")
-st.markdown("AI-powered career matching & probability engine")
-st.markdown("---")
+st.markdown("Upload resume → Get global job probability insights")
 
-# ---------------------------
-# SIDEBAR PROFILE
-# ---------------------------
+# -----------------------------
+# 1️⃣ RESUME UPLOAD
+# -----------------------------
 
-st.sidebar.header("👤 Profile Setup")
+st.sidebar.header("📄 Resume Upload")
 
-skills_input = st.sidebar.text_input(
-    "Enter your skills (comma separated)",
-    "SQL, Python, Power BI"
-)
+uploaded_file = st.sidebar.file_uploader("Upload Resume (PDF)", type=["pdf"])
 
-experience = st.sidebar.slider("Years of Experience", 0, 15, 4)
+extracted_skills = []
+experience = 0
+resume_text = ""
 
-skills = [s.strip() for s in skills_input.split(",")]
+if uploaded_file:
+    with pdfplumber.open(uploaded_file) as pdf:
+        for page in pdf.pages:
+            resume_text += page.extract_text()
 
-st.sidebar.markdown("---")
-st.sidebar.write("🎯 Update your profile to recalculate matches")
+    # Basic skill extraction dictionary
+    skill_db = [
+        "SQL","Python","Power BI","Excel",
+        "Stakeholder Management","A/B Testing",
+        "Fraud Analysis","Machine Learning",
+        "Product Strategy","Data Visualization"
+    ]
 
-# ---------------------------
-# JOB DATA
-# ---------------------------
+    extracted_skills = [
+        skill for skill in skill_db
+        if skill.lower() in resume_text.lower()
+    ]
+
+    exp_match = re.search(r'(\d+)\+?\s*years', resume_text.lower())
+    experience = int(exp_match.group(1)) if exp_match else 0
+
+    st.sidebar.success("Resume processed successfully")
+
+else:
+    st.warning("Please upload resume to continue")
+
+# -----------------------------
+# 2️⃣ JOB DATASET (SCALABLE)
+# -----------------------------
 
 jobs = [
     {
         "Role": "Senior Data Analyst",
         "Country": "Netherlands",
-        "Skills": ["SQL", "Python", "Stakeholder Management"],
+        "Skills": ["SQL","Python","Stakeholder Management"],
         "Exp": 5,
         "Competition": 0.6,
         "Demand": 0.72,
@@ -46,7 +65,7 @@ jobs = [
     {
         "Role": "Product Analyst",
         "Country": "UK",
-        "Skills": ["SQL", "A/B Testing"],
+        "Skills": ["SQL","A/B Testing"],
         "Exp": 4,
         "Competition": 0.75,
         "Demand": 0.68,
@@ -55,7 +74,7 @@ jobs = [
     {
         "Role": "Fraud Risk Analyst",
         "Country": "Singapore",
-        "Skills": ["Fraud Analysis", "SQL"],
+        "Skills": ["Fraud Analysis","SQL"],
         "Exp": 3,
         "Competition": 0.58,
         "Demand": 0.74,
@@ -63,16 +82,21 @@ jobs = [
     }
 ]
 
-# ---------------------------
-# MATCHING ENGINE
-# ---------------------------
+# -----------------------------
+# 3️⃣ MATCHING ENGINE
+# -----------------------------
 
 results = []
 
 for job in jobs:
-    overlap = len(set(skills) & set(job["Skills"]))
-    skill_score = overlap / len(job["Skills"])
-    exp_score = 1 if experience >= job["Exp"] else experience / job["Exp"]
+
+    overlap = len(set(extracted_skills) & set(job["Skills"]))
+    skill_score = overlap / len(job["Skills"]) if job["Skills"] else 0
+
+    exp_score = (
+        1 if experience >= job["Exp"]
+        else experience / job["Exp"] if job["Exp"] > 0 else 1
+    )
 
     match_score = 0.5 * skill_score + 0.5 * exp_score
 
@@ -95,107 +119,105 @@ df = pd.DataFrame(results).sort_values(
     ascending=False
 )
 
-# ---------------------------
-# KPI SECTION
-# ---------------------------
+# -----------------------------
+# 4️⃣ DASHBOARD OUTPUT
+# -----------------------------
 
-st.subheader("📊 Career Intelligence Overview")
+if uploaded_file:
 
-col1, col2, col3 = st.columns(3)
-
-best_role = df.iloc[0]["Role"]
-best_prob = df.iloc[0]["Hiring Probability %"]
-avg_match = round(df["Match %"].mean(), 2)
-
-col1.metric("🏆 Best Role", best_role)
-col2.metric("📈 Highest Probability", f"{best_prob}%")
-col3.metric("📊 Avg Match Score", f"{avg_match}%")
-
-st.markdown("---")
-
-# ---------------------------
-# TABS
-# ---------------------------
-
-tab1, tab2, tab3 = st.tabs(
-    ["🎯 Job Matches", "📈 Skill Growth", "🤖 Career Advisor"]
-)
-
-# ---------------------------
-# TAB 1 — MATCHES
-# ---------------------------
-
-with tab1:
-    st.subheader("Top Ranked Opportunities")
-    st.dataframe(df, use_container_width=True)
-
-# ---------------------------
-# TAB 2 — SKILL SIMULATION
-# ---------------------------
-
-with tab2:
-
-    st.subheader("🔎 Skill Gap Analysis")
-
-    selected_role = st.selectbox("Select Role", df["Role"])
-
-    selected_job = next(j for j in jobs if j["Role"] == selected_role)
-
-    matched = set(skills) & set(selected_job["Skills"])
-    missing = set(selected_job["Skills"]) - set(skills)
-
-    st.write("✅ Matched Skills:", list(matched))
-    st.write("❌ Missing Skills:", list(missing))
+    st.subheader("👤 Extracted Profile")
+    st.write("Skills Detected:", extracted_skills)
+    st.write("Estimated Experience:", experience, "years")
 
     st.markdown("---")
 
-    st.subheader("📈 Simulate Skill Improvement")
+    col1, col2, col3 = st.columns(3)
 
-    new_skill = st.text_input("Add a new skill to simulate")
+    best_role = df.iloc[0]["Role"]
+    best_prob = df.iloc[0]["Hiring Probability %"]
+    avg_match = round(df["Match %"].mean(), 2)
 
-    if st.button("Simulate Improvement"):
+    col1.metric("🏆 Best Role", best_role)
+    col2.metric("📈 Highest Probability", f"{best_prob}%")
+    col3.metric("📊 Avg Match Score", f"{avg_match}%")
 
-        updated_skills = skills + [new_skill]
+    st.markdown("---")
 
-        overlap = len(set(updated_skills) & set(selected_job["Skills"]))
-        skill_score = overlap / len(selected_job["Skills"])
-        exp_score = 1 if experience >= selected_job["Exp"] else experience / selected_job["Exp"]
+    tab1, tab2, tab3 = st.tabs(
+        ["🎯 Matches","📈 Skill Simulation","🤖 Career Advisor"]
+    )
 
-        new_match = 0.5 * skill_score + 0.5 * exp_score
+    # -----------------------------
+    # TAB 1
+    # -----------------------------
 
-        new_prob = (
-            new_match *
-            (1 - selected_job["Competition"]) *
-            selected_job["Demand"] *
-            selected_job["Visa"]
-        )
+    with tab1:
+        st.subheader("Top Global Opportunities")
+        st.dataframe(df, use_container_width=True)
 
-        old_prob = df[df["Role"] == selected_role]["Hiring Probability %"].values[0]
+    # -----------------------------
+    # TAB 2
+    # -----------------------------
 
-        delta = round((new_prob * 100) - old_prob, 2)
+    with tab2:
 
-        st.success(
-            f"New Hiring Probability: {round(new_prob * 100,2)}%  ( +{delta}% improvement )"
-        )
+        selected_role = st.selectbox("Select Role", df["Role"])
+        selected_job = next(j for j in jobs if j["Role"] == selected_role)
 
-# ---------------------------
-# TAB 3 — CHATBOT
-# ---------------------------
+        matched = set(extracted_skills) & set(selected_job["Skills"])
+        missing = set(selected_job["Skills"]) - set(extracted_skills)
 
-with tab3:
+        st.write("✅ Matched Skills:", list(matched))
+        st.write("❌ Missing Skills:", list(missing))
 
-    st.subheader("🧠 Strategic Career Advisor")
+        new_skill = st.text_input("Add skill to simulate")
 
-    question = st.text_input("Ask a strategic career question")
+        if st.button("Simulate"):
 
-    if question:
+            updated_skills = extracted_skills + [new_skill]
 
-        st.info(
-            f"""
-            Based on your profile:
-            - Your strongest opportunity is **{best_role}**
-            - Highest hiring probability: **{best_prob}%**
-            - Improve skill overlap to increase probability
-            - Target markets with lower competition index
-            """
-        )
+            overlap = len(set(updated_skills) & set(selected_job["Skills"]))
+            skill_score = overlap / len(selected_job["Skills"])
+
+            exp_score = (
+                1 if experience >= selected_job["Exp"]
+                else experience / selected_job["Exp"]
+            )
+
+            new_match = 0.5 * skill_score + 0.5 * exp_score
+
+            new_prob = (
+                new_match *
+                (1 - selected_job["Competition"]) *
+                selected_job["Demand"] *
+                selected_job["Visa"]
+            )
+
+            old_prob = df[df["Role"] == selected_role]["Hiring Probability %"].values[0]
+
+            delta = round((new_prob * 100) - old_prob, 2)
+
+            st.success(
+                f"New Probability: {round(new_prob * 100,2)}%  ( +{delta}% improvement )"
+            )
+
+    # -----------------------------
+    # TAB 3 (AI ADVISOR)
+    # -----------------------------
+
+    with tab3:
+
+        question = st.text_input("Ask career strategy question")
+
+        if question:
+
+            st.info(
+                f"""
+                Based on your resume:
+
+                • Strongest role: {best_role}
+                • Highest probability: {best_prob}%
+                • Improve missing skills for selected role
+                • Target lower competition countries
+                """
+            )
