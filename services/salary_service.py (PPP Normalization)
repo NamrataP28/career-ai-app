@@ -1,0 +1,4 @@
+class SalaryService:
+
+    def normalize_salary_ppp(self, salary, ppp_factor):
+        return salary / ppp_factor
