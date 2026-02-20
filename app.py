@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import matplotlib.pyplot as plt
 import pycountry
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
 import io
@@ -143,6 +143,10 @@ results_df = pd.DataFrame(results).sort_values(
     ascending=False
 ).head(3)
 
+# Ensure clean rounding
+results_df["Estimated Interview Probability"] = results_df["Estimated Interview Probability"].round(2)
+results_df["Match %"] = results_df["Match %"].round(2)
+
 # ----------------------------------
 # TOP METRICS
 # ----------------------------------
@@ -150,13 +154,14 @@ st.markdown("---")
 st.subheader("🏆 Top 3 Strategic Career Options")
 
 cols = st.columns(3)
-for i in range(len(results_df)):
-prob = results_df.iloc[i]["Estimated Interview Probability"]
 
-cols[i].metric(
-    results_df.iloc[i]["Role"],
-    f"{prob:.2f}%",
-    results_df.iloc[i]["Country"]
+for i in range(len(results_df)):
+    prob = results_df.iloc[i]["Estimated Interview Probability"]
+
+    cols[i].metric(
+        label=results_df.iloc[i]["Role"],
+        value=f"{prob:.2f}%",
+        delta=f"Market: {results_df.iloc[i]['Country']}"
     )
 
 st.markdown("---")
@@ -169,7 +174,7 @@ tab1, tab2, tab3, tab4 = st.tabs(
 )
 
 # ----------------------------------
-# TAB 1 — TABLE
+# TAB 1
 # ----------------------------------
 with tab1:
     st.dataframe(results_df[[
@@ -178,7 +183,7 @@ with tab1:
     ]], use_container_width=True)
 
 # ----------------------------------
-# TAB 2 — COMPACT VISUALS
+# TAB 2
 # ----------------------------------
 with tab2:
     colA, colB = st.columns(2)
@@ -196,7 +201,7 @@ with tab2:
         st.pyplot(fig2)
 
 # ----------------------------------
-# TAB 3 — AI ADVISOR
+# TAB 3 — ADVISOR
 # ----------------------------------
 with tab3:
 
@@ -222,38 +227,17 @@ with tab3:
     else:
         st.success("All required skills met.")
 
-    st.markdown("---")
-    st.subheader("💬 Career Strategy Chat")
-
-    question = st.text_input("Ask a career question")
-
-    if question:
-        if "salary" in question.lower():
-            st.write(f"Expected salary: ${selected_row['Avg Salary ($)']}")
-        elif "country" in question.lower():
-            st.write(f"Best market: {selected_row['Country']}")
-        elif "stress" in question.lower():
-            st.write("Daily structured routine + weekly review reduces job anxiety.")
-        else:
-            st.write("Focus on portfolio, networking, and targeted applications.")
-
 # ----------------------------------
 # TAB 4 — PERFORMANCE
 # ----------------------------------
 with tab4:
     st.subheader("🧠 Career Performance System")
 
-    st.markdown("### 🔥 High Performance Habits")
     st.write("• 90 min daily skill building")
     st.write("• 3 targeted applications per day")
     st.write("• Weekly mock interview")
-
-    st.markdown("### 🧘 Stress Control System")
-    st.write("• 20 min walk daily")
+    st.write("• 20 min daily walk")
     st.write("• Stop job search after 8PM")
-    st.write("• Track weekly skill wins")
-
-    st.info("Measure effort, not outcome.")
 
 # ----------------------------------
 # PDF REPORT
@@ -270,7 +254,7 @@ def generate_pdf():
     for _, row in results_df.iterrows():
         elements.append(
             Paragraph(
-                f"{row['Role']} - {row['Country']} - {row['Estimated Interview Probability']}%",
+                f"{row['Role']} - {row['Country']} - {row['Estimated Interview Probability']:.2f}%",
                 styles["Normal"]
             )
         )
