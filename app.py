@@ -87,10 +87,12 @@ exp_match = re.search(r'(\d+)\+?\s*years', resume_text.lower())
 experience = int(exp_match.group(1)) if exp_match else 0
 
 # ----------------------------------
-# MATCHING ENGINE
+# MATCHING ENGINE (STRATEGIC VERSION)
 # ----------------------------------
 resume_embedding = model.encode(resume_text)
 results = []
+
+max_salary = jobs_df["AvgSalary"].max()
 
 for _, row in jobs_df.iterrows():
 
@@ -101,48 +103,116 @@ for _, row in jobs_df.iterrows():
 
     required_skills = row["Skills"].split(",")
     skill_overlap = len(set(extracted_skills) & set(required_skills))
-    skill_score = skill_overlap / len(required_skills)
+    skill_score = skill_overlap / max(len(required_skills), 1)
 
-    exp_score = 1 if experience >= row["Experience"] else experience / row["Experience"]
+    exp_score = 1 if experience >= row["Experience"] else experience / max(row["Experience"],1)
+
     match_score = 0.5 * similarity + 0.3 * skill_score + 0.2 * exp_score
 
-    salary_score = row["AvgSalary"] / jobs_df["AvgSalary"].max()
+    salary_score = row["AvgSalary"] / max_salary
+    competition_safe = max(row["Competition"], 0.01)
 
-    competitiveness_index = (
-        0.4 * match_score +
-        0.2 * row["Demand"] +
+    # 🔥 NEW STRATEGIC METRICS
+
+    market_roi = (row["Demand"] * row["AvgSalary"]) / competition_safe
+
+    effort_reward = competition_safe / max((row["Demand"] * match_score), 0.01)
+
+    strategic_priority = (
+        0.35 * match_score +
+        0.20 * row["Demand"] +
         0.15 * (1 - row["Competition"]) +
         0.15 * row["Visa"] +
-        0.1 * salary_score
-    )
-
-    probability = (
-        0.6 * match_score +
-        0.15 * (1 - row["Competition"]) +
-        0.15 * row["Demand"] +
-        0.1 * row["Visa"]
+        0.15 * salary_score
     )
 
     home_boost = 1.15 if row["Country"] == home_country else 1
-    adjusted_probability = min(probability * home_boost * 100, 100)
 
-    market_difficulty = (
-        row["Competition"] * 0.6 +
-        (1 - row["Demand"]) * 0.4
-    ) * 100
+    interview_probability = min(
+        (0.6 * match_score +
+         0.15 * (1 - row["Competition"]) +
+         0.15 * row["Demand"] +
+         0.1 * row["Visa"]) * home_boost * 100,
+        100
+    )
 
     results.append({
         "Role": row["Role"],
         "Country": row["Country"],
         "Match %": round(match_score * 100, 2),
-        "Estimated Interview Probability": round(adjusted_probability, 2),
-        "Competitiveness Index": round(competitiveness_index * 100, 2),
-        "Market Difficulty %": round(market_difficulty, 2),
+        "Interview Probability": round(interview_probability, 2),
+        "Market ROI Score": round(market_roi, 2),
+        "Effort-to-Reward Ratio": round(effort_reward, 2),
+        "Strategic Priority Index": round(strategic_priority * 100, 2),
+        "Competition": row["Competition"] * 100,
+        "Demand": row["Demand"] * 100,
+        "Visa": row["Visa"] * 100,
         "Avg Salary ($)": row["AvgSalary"],
         "Projects": row.get("Projects", "")
     })
 
 full_results_df = pd.DataFrame(results)
+
+# Percentile Ranking based on Strategic Priority
+full_results_df["Percentile Rank"] = (
+    full_results_df["Strategic Priority Index"].rank(pct=True) * 100
+).round(2)
+
+# Sort by Strategic Priority
+results_df = full_results_df.sort_values(
+    by="Strategic Priority Index",
+    ascending=False
+).head(3)
+
+    # 🔥 NEW ECONOMIC INTELLIGENCE METRICS
+
+    market_roi = (row["Demand"] * row["AvgSalary"]) / competition_safe
+
+    effort_reward = competition_safe / max((row["Demand"] * match_score), 0.01)
+
+    strategic_priority = (
+        0.35 * match_score +
+        0.20 * row["Demand"] +
+        0.15 * (1 - row["Competition"]) +
+        0.15 * row["Visa"] +
+        0.15 * salary_score
+    )
+
+    home_boost = 1.15 if row["Country"] == home_country else 1
+    interview_probability = min(
+        (0.6 * match_score +
+         0.15 * (1 - row["Competition"]) +
+         0.15 * row["Demand"] +
+         0.1 * row["Visa"]) * home_boost * 100,
+        100
+    )
+
+    results.append({
+        "Role": row["Role"],
+        "Country": row["Country"],
+        "Match %": round(match_score * 100, 2),
+        "Interview Probability": round(interview_probability, 2),
+        "Market ROI Score": round(market_roi, 2),
+        "Effort-to-Reward Ratio": round(effort_reward, 2),
+        "Strategic Priority Index": round(strategic_priority * 100, 2),
+        "Competition": row["Competition"] * 100,
+        "Demand": row["Demand"] * 100,
+        "Visa": row["Visa"] * 100,
+        "Avg Salary ($)": row["AvgSalary"],
+        "Projects": row.get("Projects", "")
+    })
+
+full_results_df = pd.DataFrame(results)
+
+# Percentile ranking
+full_results_df["Percentile Rank"] = (
+    full_results_df["Strategic Priority Index"].rank(pct=True) * 100
+).round(2)
+
+results_df = full_results_df.sort_values(
+    by="Strategic Priority Index",
+    ascending=False
+).head(3)
 
 # Percentile Ranking
 full_results_df["Percentile Rank"] = (
@@ -155,28 +225,26 @@ results_df = full_results_df.sort_values(
 ).head(3)
 
 # ----------------------------------
-# EXECUTIVE SCORECARD
+# EXECUTIVE STRATEGIC SCORECARD
 # ----------------------------------
 st.markdown("---")
-st.subheader("📊 Executive Scorecard")
+st.subheader("📊 Executive Strategic Scorecard")
 
 top = results_df.iloc[0]
 
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("Competitiveness",
-            f"{top['Competitiveness Index']:.1f}%")
+col1.metric("Strategic Priority",
+            f"{top['Strategic Priority Index']:.1f}%")
 
-col2.metric("Interview Probability",
-            f"{top['Estimated Interview Probability']:.1f}%")
+col2.metric("Market ROI",
+            f"{top['Market ROI Score']:.0f}")
 
-col3.metric("Market Difficulty",
-            f"{top['Market Difficulty %']:.1f}%")
+col3.metric("Effort / Reward",
+            f"{top['Effort-to-Reward Ratio']:.2f}")
 
 col4.metric("Percentile Rank",
             f"{top['Percentile Rank']:.0f}th")
-
-st.markdown("---")
 
 # ----------------------------------
 # TABS
@@ -194,38 +262,94 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(
 # ----------------------------------
 with tab1:
     st.dataframe(results_df[[
-        "Role","Country","Match %",
-        "Estimated Interview Probability",
-        "Competitiveness Index",
+        "Role","Country",
+        "Strategic Priority Index",
+        "Interview Probability",
+        "Market ROI Score",
+        "Effort-to-Reward Ratio",
         "Percentile Rank",
         "Avg Salary ($)"
     ]], use_container_width=True)
 
 # ----------------------------------
-# TAB 2 — COMPETITIVE BREAKDOWN
+# TAB 2 — Competitive analysis
 # ----------------------------------
 with tab2:
 
-    job_row = jobs_df[jobs_df["Role"] == top["Role"]].iloc[0]
+    st.subheader("📈 Competitive Market Comparison")
 
-    factors = {
-        "Skill Strength": top["Match %"],
-        "Market Demand": job_row["Demand"] * 100,
-        "Low Competition": (1 - job_row["Competition"]) * 100,
-        "Visa Accessibility": job_row["Visa"] * 100,
-        "Salary Power": (job_row["AvgSalary"] / jobs_df["AvgSalary"].max()) * 100,
-    }
+    comparison_df = results_df.copy()
 
-    factor_df = pd.DataFrame({
-        "Factor": factors.keys(),
-        "Score": factors.values()
-    })
+    # Add Effort Score (inverse logic)
+    comparison_df["Effort Score"] = (
+        comparison_df["Competition"] /
+        comparison_df["Demand"]
+    ).round(2)
 
-    fig, ax = plt.subplots(figsize=(6,3))
-    ax.barh(factor_df["Factor"], factor_df["Score"])
-    ax.set_xlim(0,100)
+    # Clean columns for clarity
+    display_df = comparison_df[[
+        "Role",
+        "Match %",
+        "Demand",
+        "Competition",
+        "Avg Salary ($)",
+        "Interview Probability",
+        "Market ROI Score",
+        "Effort Score"
+    ]]
+
+    st.dataframe(display_df, use_container_width=True)
+
+    st.markdown("---")
+    st.markdown("### 📊 Market Forces by Role")
+
+    fig, ax = plt.subplots(figsize=(8,4))
+
+    x = range(len(display_df))
+
+    ax.bar(x, display_df["Demand"], width=0.25, label="Demand")
+    ax.bar([i + 0.25 for i in x], display_df["Competition"], width=0.25, label="Competition")
+    ax.bar([i + 0.50 for i in x], display_df["Match %"], width=0.25, label="Your Skill Strength")
+
+    ax.set_xticks([i + 0.25 for i in x])
+    ax.set_xticklabels(display_df["Role"], rotation=30)
+    ax.set_ylabel("Score (%)")
+    ax.set_title("Demand vs Competition vs Your Strength")
+    ax.legend()
+
     st.pyplot(fig)
 
+    st.markdown("---")
+    st.markdown("### 💰 Reward vs Effort Analysis")
+
+    fig2, ax2 = plt.subplots(figsize=(8,4))
+
+    ax2.bar(display_df["Role"], display_df["Market ROI Score"])
+    ax2.set_ylabel("Market ROI Score")
+    ax2.set_title("Economic Opportunity by Role")
+
+    st.pyplot(fig2)
+
+    st.markdown("---")
+    st.markdown("### 🧠 Interpretation")
+
+    for _, row in display_df.iterrows():
+
+        st.markdown(f"**{row['Role']}**")
+
+        if row["Demand"] > row["Competition"]:
+            st.success("Market demand exceeds competition → structural opportunity")
+        else:
+            st.warning("Competition heavier than demand → harder entry")
+
+        if row["Match %"] > 70:
+            st.success("Strong skill alignment")
+        elif row["Match %"] > 50:
+            st.info("Moderate alignment")
+        else:
+            st.error("Weak alignment – skill investment needed")
+
+        st.markdown("---")
 # ----------------------------------
 # TAB 3 — COUNTRY HEATMAP
 # ----------------------------------
@@ -258,21 +382,23 @@ with tab4:
 
         simulated_skills = extracted_skills + [new_skill]
 
+        job_row = jobs_df[jobs_df["Role"] == top["Role"]].iloc[0]
+
         required_skills = job_row["Skills"].split(",")
         skill_overlap = len(set(simulated_skills) & set(required_skills))
-        skill_score = skill_overlap / len(required_skills)
+        skill_score = skill_overlap / max(len(required_skills),1)
 
-        new_match_score = 0.5 * similarity + 0.3 * skill_score + 0.2 * exp_score
+        simulated_match = 0.5 * similarity + 0.3 * skill_score + 0.2 * exp_score
 
-        simulated_index = (
-            0.4 * new_match_score +
-            0.2 * job_row["Demand"] +
+        simulated_priority = (
+            0.35 * simulated_match +
+            0.20 * job_row["Demand"] +
             0.15 * (1 - job_row["Competition"]) +
             0.15 * job_row["Visa"] +
-            0.1 * (job_row["AvgSalary"] / jobs_df["AvgSalary"].max())
+            0.15 * (job_row["AvgSalary"] / max_salary)
         ) * 100
 
-        st.success(f"New Competitiveness Index: {simulated_index:.2f}%")
+        st.success(f"New Strategic Priority Index: {simulated_priority:.2f}%")
 
 # ----------------------------------
 # TAB 5 — PERFORMANCE
