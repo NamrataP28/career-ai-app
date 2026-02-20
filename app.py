@@ -2,33 +2,29 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import re
+import random
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
-import plotly.graph_objects as go
+import matplotlib.pyplot as plt
 import pycountry
 
 # ----------------------------------
-# PAGE CONFIG
+# CONFIG
 # ----------------------------------
 st.set_page_config(page_title="AI Career Intelligence Engine", layout="wide")
 
 # ----------------------------------
-# SESSION STATE INITIALIZATION
+# SESSION STATE
 # ----------------------------------
 if "page" not in st.session_state:
     st.session_state.page = 1
-
-if "user" not in st.session_state:
-    st.session_state.user = None
-
 if "resume_text" not in st.session_state:
     st.session_state.resume_text = None
-
 if "home_country" not in st.session_state:
     st.session_state.home_country = None
 
 # ----------------------------------
-# LOAD MODEL & DATA
+# LOAD MODEL
 # ----------------------------------
 @st.cache_resource
 def load_model():
@@ -41,9 +37,9 @@ def load_jobs():
 model = load_model()
 jobs_df = load_jobs()
 
-# ==========================================================
+# =====================================================
 # PAGE 1 — LOGIN
-# ==========================================================
+# =====================================================
 if st.session_state.page == 1:
 
     st.title("🔐 AI Career Intelligence Engine")
@@ -53,23 +49,22 @@ if st.session_state.page == 1:
 
     if st.button("Login"):
         if username and password:
-            st.session_state.user = username
             st.session_state.page = 2
             st.rerun()
         else:
-            st.error("Please enter credentials")
+            st.error("Enter valid credentials")
 
-# ==========================================================
-# PAGE 2 — RESUME UPLOAD
-# ==========================================================
+# =====================================================
+# PAGE 2 — UPLOAD
+# =====================================================
 elif st.session_state.page == 2:
 
     st.title("📄 Upload Resume")
 
     uploaded_file = st.file_uploader("Upload Resume (PDF)", type=["pdf"])
 
-    all_countries = sorted([c.name for c in pycountry.countries])
-    home_country = st.selectbox("Select Your Current Country", all_countries)
+    countries = sorted([c.name for c in pycountry.countries])
+    home_country = st.selectbox("Select Your Country", countries)
 
     if uploaded_file:
 
@@ -87,27 +82,18 @@ elif st.session_state.page == 2:
             st.session_state.page = 3
             st.rerun()
 
-    if st.button("⬅ Back to Login"):
-        st.session_state.page = 1
-        st.rerun()
-
-# ==========================================================
-# PAGE 3 — ANALYSIS
-# ==========================================================
+# =====================================================
+# PAGE 3 — FULL ANALYSIS
+# =====================================================
 elif st.session_state.page == 3:
 
-    st.title("🚀 Career Analysis Dashboard")
+    st.title("🚀 AI Career Intelligence Dashboard")
 
     resume_text = st.session_state.resume_text
     home_country = st.session_state.home_country
 
-    if resume_text is None:
-        st.error("Resume not found. Please re-upload.")
-        st.session_state.page = 2
-        st.rerun()
-
     # ----------------------------------
-    # SKILL EXTRACTION
+    # Extract skills
     # ----------------------------------
     skill_db = list(set(",".join(jobs_df["Skills"]).split(",")))
     extracted_skills = [
@@ -119,12 +105,12 @@ elif st.session_state.page == 3:
     exp_match = re.search(r'(\d+)\+?\s*years', resume_text.lower())
     experience = int(exp_match.group(1)) if exp_match else 0
 
-    # ----------------------------------
-    # MATCHING ENGINE
-    # ----------------------------------
     resume_embedding = model.encode(resume_text)
     results = []
 
+    # ----------------------------------
+    # MATCHING ENGINE
+    # ----------------------------------
     for _, row in jobs_df.iterrows():
 
         job_text = row["Role"] + " " + row["Skills"]
@@ -144,16 +130,13 @@ elif st.session_state.page == 3:
 
         competition_safe = max(row["Competition"], 0.01)
 
-        # ROI formula unchanged
         market_opportunity = (row["Demand"] * row["AvgSalary"]) / competition_safe
-
-        home_boost = 1.15 if row["Country"] == home_country else 1
 
         interview_probability = min(
             (0.6 * match_score +
              0.15 * (1 - row["Competition"]) +
              0.15 * row["Demand"] +
-             0.1 * row["Visa"]) * home_boost * 100,
+             0.1 * row["Visa"]) * 100,
             100
         )
 
@@ -161,91 +144,135 @@ elif st.session_state.page == 3:
             "Role": row["Role"],
             "Country": row["Country"],
             "Match %": round(match_score * 100, 2),
-            "Interview Probability": round(interview_probability, 2),
-            "Market Opportunity Index": round(market_opportunity, 2),
             "Demand": round(row["Demand"] * 100, 2),
             "Competition": round(row["Competition"] * 100, 2),
-            "Avg Salary ($)": row["AvgSalary"]
+            "Interview Probability": round(interview_probability, 2),
+            "Market Opportunity Index": round(market_opportunity, 2)
         })
 
     df = pd.DataFrame(results)
 
-    df["Percentile Rank"] = (
-        df["Interview Probability"].rank(pct=True) * 100
-    ).round(2)
-
-    results_df = df.sort_values(
-        by="Interview Probability",
-        ascending=False
-    ).head(3)
-
-    # ----------------------------------
-    # EXECUTIVE SUMMARY
-    # ----------------------------------
-    st.subheader("📊 Executive Summary")
-
-    top = results_df.iloc[0]
-
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric("Interview Probability", f"{top['Interview Probability']}%")
-    col2.metric(
-        "Market Opportunity Index",
-        f"{int(top['Market Opportunity Index']):,}"
-    )
-    col3.metric("Percentile Rank", f"{top['Percentile Rank']:.0f}th")
-
-    # ----------------------------------
-    # INTERACTIVE CHART
-    # ----------------------------------
-    st.subheader("📈 Competitive Comparison")
-
-    fig = go.Figure()
-
-    for metric in ["Demand", "Competition", "Match %"]:
-        fig.add_trace(go.Bar(
-            x=results_df["Role"],
-            y=results_df[metric],
-            name=metric,
-            text=[f"{val}%" for val in results_df[metric]],
-            textposition="outside"
-        ))
-
-    fig.update_layout(
-        barmode="group",
-        yaxis=dict(title="Score (%)", range=[0, 100]),
-        legend=dict(orientation="h", y=1.1),
-        height=450
+    # ============================================
+    # TABS
+    # ============================================
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["🌍 Global Market View",
+         "📊 Competitive Intelligence",
+         "🤖 AI Career Advisor",
+         "💡 Daily Boost"]
     )
 
-    st.plotly_chart(fig, use_container_width=True)
+    # ============================================
+    # TAB 1 — GLOBAL MARKET VIEW
+    # ============================================
+    with tab1:
 
-    # ----------------------------------
-    # ROI CHART
-    # ----------------------------------
-    st.subheader("💰 Economic Opportunity")
+        st.subheader("Top 5 Role-Country Opportunities")
 
-    fig2 = go.Figure()
+        top5 = df.sort_values(
+            "Interview Probability",
+            ascending=False
+        ).head(5)
 
-    fig2.add_trace(go.Bar(
-        x=results_df["Role"],
-        y=results_df["Market Opportunity Index"],
-        text=[f"{int(val):,}" for val in results_df["Market Opportunity Index"]],
-        textposition="outside"
-    ))
+        st.dataframe(top5, use_container_width=True)
 
-    fig2.update_layout(
-        yaxis_title="Market Opportunity Index (Demand × Salary ÷ Competition)",
-        height=450
-    )
+    # ============================================
+    # TAB 2 — COMPETITIVE INTELLIGENCE
+    # ============================================
+    with tab2:
 
-    st.plotly_chart(fig2, use_container_width=True)
+        st.subheader("Demand vs Competition vs Your Strength")
 
-    st.info(
-        "Market Opportunity Index = (Demand × Average Salary) ÷ Competition.\n\n"
-        "Higher values indicate stronger economic upside adjusted for competitive intensity."
-    )
+        top3 = df.sort_values(
+            "Interview Probability",
+            ascending=False
+        ).head(3)
 
-    if st.button("⬅ Upload Another Resume"):
-        st.session_state.page = 2
-        st.rerun()
+        fig, ax = plt.subplots(figsize=(8, 4))
+        x = range(len(top3))
+
+        bars1 = ax.bar(x, top3["Demand"], width=0.25, label="Demand")
+        bars2 = ax.bar([i + 0.25 for i in x], top3["Competition"], width=0.25, label="Competition")
+        bars3 = ax.bar([i + 0.50 for i in x], top3["Match %"], width=0.25, label="Your Strength")
+
+        ax.set_xticks([i + 0.25 for i in x])
+        ax.set_xticklabels(top3["Role"], rotation=20)
+        ax.set_ylim(0, 100)
+        ax.legend()
+
+        for bars in [bars1, bars2, bars3]:
+            for bar in bars:
+                height = bar.get_height()
+                ax.text(
+                    bar.get_x() + bar.get_width()/2,
+                    height + 1,
+                    f'{height:.2f}%',
+                    ha='center'
+                )
+
+        st.pyplot(fig)
+
+        st.markdown("### Economic Opportunity Insight")
+        for _, row in top3.iterrows():
+            st.write(f"**{row['Role']} ({row['Country']})**")
+            st.write(
+                f"Demand: {row['Demand']:.2f}% | "
+                f"Competition: {row['Competition']:.2f}% | "
+                f"Interview Probability: {row['Interview Probability']:.2f}%"
+            )
+            st.write("---")
+
+    # ============================================
+    # TAB 3 — AI CAREER ADVISOR
+    # ============================================
+    with tab3:
+
+        st.subheader("Ask the AI Career Advisor")
+
+        question = st.text_input("Ask about skills, certifications, improvements...")
+
+        if question:
+
+            missing_skills = []
+
+            top_role = df.sort_values(
+                "Interview Probability",
+                ascending=False
+            ).iloc[0]
+
+            job_row = jobs_df[jobs_df["Role"] == top_role["Role"]].iloc[0]
+            required_skills = job_row["Skills"].split(",")
+
+            for skill in required_skills:
+                if skill.strip().lower() not in resume_text.lower():
+                    missing_skills.append(skill.strip())
+
+            st.write("### AI Guidance")
+            st.write(
+                f"To improve for **{top_role['Role']}**, consider strengthening:"
+            )
+            st.write(", ".join(missing_skills[:5]))
+
+            st.write("Suggested Strategy:")
+            st.write("- Complete role-aligned certification")
+            st.write("- Build 2 real-world portfolio projects")
+            st.write("- Improve measurable impact metrics in resume")
+
+    # ============================================
+    # TAB 4 — DAILY BOOST
+    # ============================================
+    with tab4:
+
+        quotes = [
+            "Rejection is redirection.",
+            "Every no brings you closer to the right yes.",
+            "Your skills compound daily.",
+            "Focus on controllables.",
+            "Small improvements daily = massive career gains."
+        ]
+
+        st.subheader("💬 Today's Motivation")
+        st.success(random.choice(quotes))
+
+        st.subheader("Mini Challenge")
+        st.info("Apply to 3 quality roles today — not 30 random ones.")
