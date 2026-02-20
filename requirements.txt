@@ -1,2 +1,6 @@
 streamlit
 pandas
+numpy
+pdfplumber
+scikit-learn
+openai
