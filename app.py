@@ -87,7 +87,7 @@ exp_match = re.search(r'(\d+)\+?\s*years', resume_text.lower())
 experience = int(exp_match.group(1)) if exp_match else 0
 
 # ----------------------------------
-# MATCHING ENGINE (STRATEGIC VERSION)
+# MATCHING ENGINE
 # ----------------------------------
 resume_embedding = model.encode(resume_text)
 results = []
@@ -105,26 +105,14 @@ for _, row in jobs_df.iterrows():
     skill_overlap = len(set(extracted_skills) & set(required_skills))
     skill_score = skill_overlap / max(len(required_skills), 1)
 
-    exp_score = 1 if experience >= row["Experience"] else experience / max(row["Experience"],1)
+    exp_score = 1 if experience >= row["Experience"] else experience / max(row["Experience"], 1)
 
     match_score = 0.5 * similarity + 0.3 * skill_score + 0.2 * exp_score
 
-    salary_score = row["AvgSalary"] / max_salary
     competition_safe = max(row["Competition"], 0.01)
 
-    # 🔥 NEW STRATEGIC METRICS
-
     market_roi = (row["Demand"] * row["AvgSalary"]) / competition_safe
-
     effort_reward = competition_safe / max((row["Demand"] * match_score), 0.01)
-
-    strategic_priority = (
-        0.35 * match_score +
-        0.20 * row["Demand"] +
-        0.15 * (1 - row["Competition"]) +
-        0.15 * row["Visa"] +
-        0.15 * salary_score
-    )
 
     home_boost = 1.15 if row["Country"] == home_country else 1
 
@@ -143,99 +131,37 @@ for _, row in jobs_df.iterrows():
         "Interview Probability": round(interview_probability, 2),
         "Market ROI Score": round(market_roi, 2),
         "Effort-to-Reward Ratio": round(effort_reward, 2),
-        "Strategic Priority Index": round(strategic_priority * 100, 2),
-        "Competition": row["Competition"] * 100,
-        "Demand": row["Demand"] * 100,
-        "Visa": row["Visa"] * 100,
+        "Demand": round(row["Demand"] * 100, 2),
+        "Competition": round(row["Competition"] * 100, 2),
+        "Visa": round(row["Visa"] * 100, 2),
         "Avg Salary ($)": row["AvgSalary"],
         "Projects": row.get("Projects", "")
     })
 
 full_results_df = pd.DataFrame(results)
 
-# Percentile Ranking based on Strategic Priority
+# Percentile Ranking based on Interview Probability
 full_results_df["Percentile Rank"] = (
-    full_results_df["Strategic Priority Index"].rank(pct=True) * 100
+    full_results_df["Interview Probability"].rank(pct=True) * 100
 ).round(2)
 
-# Sort by Strategic Priority
+# Top 3 Roles
 results_df = full_results_df.sort_values(
-    by="Strategic Priority Index",
+    by="Interview Probability",
     ascending=False
 ).head(3)
-
-    # 🔥 NEW ECONOMIC INTELLIGENCE METRICS
-
-    market_roi = (row["Demand"] * row["AvgSalary"]) / competition_safe
-
-    effort_reward = competition_safe / max((row["Demand"] * match_score), 0.01)
-
-    strategic_priority = (
-        0.35 * match_score +
-        0.20 * row["Demand"] +
-        0.15 * (1 - row["Competition"]) +
-        0.15 * row["Visa"] +
-        0.15 * salary_score
-    )
-
-    home_boost = 1.15 if row["Country"] == home_country else 1
-    interview_probability = min(
-        (0.6 * match_score +
-         0.15 * (1 - row["Competition"]) +
-         0.15 * row["Demand"] +
-         0.1 * row["Visa"]) * home_boost * 100,
-        100
-    )
-
-    results.append({
-        "Role": row["Role"],
-        "Country": row["Country"],
-        "Match %": round(match_score * 100, 2),
-        "Interview Probability": round(interview_probability, 2),
-        "Market ROI Score": round(market_roi, 2),
-        "Effort-to-Reward Ratio": round(effort_reward, 2),
-        "Strategic Priority Index": round(strategic_priority * 100, 2),
-        "Competition": row["Competition"] * 100,
-        "Demand": row["Demand"] * 100,
-        "Visa": row["Visa"] * 100,
-        "Avg Salary ($)": row["AvgSalary"],
-        "Projects": row.get("Projects", "")
-    })
-
-full_results_df = pd.DataFrame(results)
-
-# Percentile ranking
-full_results_df["Percentile Rank"] = (
-    full_results_df["Strategic Priority Index"].rank(pct=True) * 100
-).round(2)
-
-results_df = full_results_df.sort_values(
-    by="Strategic Priority Index",
-    ascending=False
-).head(3)
-
-# Percentile Ranking
-full_results_df["Percentile Rank"] = (
-    full_results_df["Match %"].rank(pct=True) * 100
-).round(2)
-
-results_df = full_results_df.sort_values(
-    by="Competitiveness Index",
-    ascending=False
-).head(3)
-
 # ----------------------------------
 # EXECUTIVE STRATEGIC SCORECARD
 # ----------------------------------
 st.markdown("---")
-st.subheader("📊 Executive Strategic Scorecard")
+st.subheader("📊 Executive Summary")
 
 top = results_df.iloc[0]
 
 col1, col2, col3, col4 = st.columns(4)
 
-col1.metric("Strategic Priority",
-            f"{top['Strategic Priority Index']:.1f}%")
+col1.metric("Interview Probability",
+            f"{top['Interview Probability']:.1f}%")
 
 col2.metric("Market ROI",
             f"{top['Market ROI Score']:.0f}")
@@ -263,14 +189,13 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs(
 with tab1:
     st.dataframe(results_df[[
         "Role","Country",
-        "Strategic Priority Index",
+        "Match %",
         "Interview Probability",
         "Market ROI Score",
         "Effort-to-Reward Ratio",
         "Percentile Rank",
         "Avg Salary ($)"
     ]], use_container_width=True)
-
 # ----------------------------------
 # TAB 2 — Competitive analysis
 # ----------------------------------
@@ -280,13 +205,11 @@ with tab2:
 
     comparison_df = results_df.copy()
 
-    # Add Effort Score (inverse logic)
     comparison_df["Effort Score"] = (
         comparison_df["Competition"] /
         comparison_df["Demand"]
     ).round(2)
 
-    # Clean columns for clarity
     display_df = comparison_df[[
         "Role",
         "Match %",
@@ -300,8 +223,7 @@ with tab2:
 
     st.dataframe(display_df, use_container_width=True)
 
-    st.markdown("---")
-    st.markdown("### 📊 Market Forces by Role")
+    st.markdown("### 📊 Demand vs Competition vs Your Strength")
 
     fig, ax = plt.subplots(figsize=(8,4))
 
@@ -309,45 +231,38 @@ with tab2:
 
     ax.bar(x, display_df["Demand"], width=0.25, label="Demand")
     ax.bar([i + 0.25 for i in x], display_df["Competition"], width=0.25, label="Competition")
-    ax.bar([i + 0.50 for i in x], display_df["Match %"], width=0.25, label="Your Skill Strength")
+    ax.bar([i + 0.50 for i in x], display_df["Match %"], width=0.25, label="Your Strength")
 
     ax.set_xticks([i + 0.25 for i in x])
     ax.set_xticklabels(display_df["Role"], rotation=30)
     ax.set_ylabel("Score (%)")
-    ax.set_title("Demand vs Competition vs Your Strength")
     ax.legend()
 
     st.pyplot(fig)
 
-    st.markdown("---")
-    st.markdown("### 💰 Reward vs Effort Analysis")
+    st.markdown("### 💰 Economic Opportunity")
 
     fig2, ax2 = plt.subplots(figsize=(8,4))
-
     ax2.bar(display_df["Role"], display_df["Market ROI Score"])
-    ax2.set_ylabel("Market ROI Score")
-    ax2.set_title("Economic Opportunity by Role")
-
+    ax2.set_ylabel("Market ROI")
     st.pyplot(fig2)
 
-    st.markdown("---")
     st.markdown("### 🧠 Interpretation")
 
     for _, row in display_df.iterrows():
-
         st.markdown(f"**{row['Role']}**")
 
         if row["Demand"] > row["Competition"]:
-            st.success("Market demand exceeds competition → structural opportunity")
+            st.success("Demand exceeds competition → structural opportunity")
         else:
-            st.warning("Competition heavier than demand → harder entry")
+            st.warning("Competition heavier than demand → difficult entry")
 
         if row["Match %"] > 70:
             st.success("Strong skill alignment")
         elif row["Match %"] > 50:
             st.info("Moderate alignment")
         else:
-            st.error("Weak alignment – skill investment needed")
+            st.error("Weak alignment – improvement required")
 
         st.markdown("---")
 # ----------------------------------
@@ -357,7 +272,7 @@ with tab3:
 
     country_summary = (
         full_results_df
-        .groupby("Country")["Competitiveness Index"]
+        .groupby("Country")["Interview Probability"]
         .mean()
         .sort_values(ascending=False)
         .head(10)
@@ -365,8 +280,7 @@ with tab3:
 
     fig, ax = plt.subplots(figsize=(6,3))
     ax.barh(country_summary.index, country_summary.values)
-    ax.set_xlim(0,100)
-    ax.set_title("Top 10 Countries for Your Profile")
+    ax.set_title("Top 10 Countries by Interview Probability")
     st.pyplot(fig)
 
 # ----------------------------------
@@ -383,22 +297,22 @@ with tab4:
         simulated_skills = extracted_skills + [new_skill]
 
         job_row = jobs_df[jobs_df["Role"] == top["Role"]].iloc[0]
-
         required_skills = job_row["Skills"].split(",")
+
         skill_overlap = len(set(simulated_skills) & set(required_skills))
-        skill_score = skill_overlap / max(len(required_skills),1)
+        skill_score = skill_overlap / max(len(required_skills), 1)
 
         simulated_match = 0.5 * similarity + 0.3 * skill_score + 0.2 * exp_score
 
-        simulated_priority = (
-            0.35 * simulated_match +
-            0.20 * job_row["Demand"] +
-            0.15 * (1 - job_row["Competition"]) +
-            0.15 * job_row["Visa"] +
-            0.15 * (job_row["AvgSalary"] / max_salary)
-        ) * 100
+        simulated_probability = min(
+            (0.6 * simulated_match +
+             0.15 * (1 - job_row["Competition"]) +
+             0.15 * job_row["Demand"] +
+             0.1 * job_row["Visa"]) * 100,
+            100
+        )
 
-        st.success(f"New Strategic Priority Index: {simulated_priority:.2f}%")
+        st.success(f"New Interview Probability: {simulated_probability:.2f}%")
 
 # ----------------------------------
 # TAB 5 — PERFORMANCE
@@ -423,11 +337,11 @@ def generate_pdf():
     elements.append(Spacer(1, 12))
 
     for _, row in results_df.iterrows():
-        elements.append(
-            Paragraph(
-                f"{row['Role']} - {row['Country']} - {row['Competitiveness Index']:.2f}%",
-                styles["Normal"]
-            )
+    elements.append(
+        Paragraph(
+            f"{row['Role']} - {row['Country']} - {row['Interview Probability']:.2f}%",
+            styles["Normal"]
+           )
         )
         elements.append(Spacer(1, 6))
 
