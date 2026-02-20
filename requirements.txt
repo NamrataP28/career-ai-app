@@ -6,4 +6,6 @@ scikit-learn
 plotly
 requests
 openai
+python-dotenv
+sqlalchemy
 pycountry
