@@ -1,11 +1,7 @@
 streamlit
-pandas
-pdfplumber
 sentence-transformers
 scikit-learn
-plotly
 requests
+plotly
 openai
-python-dotenv
-sqlalchemy
-pycountry
+pdfplumber
