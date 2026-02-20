@@ -265,6 +265,16 @@ with tab2:
             st.error("Weak alignment – improvement required")
 
         st.markdown("---")
+        
+     st.markdown("### 📊 Strategic Insight Summary")
+
+    best_role = display_df.sort_values("Market ROI Score", ascending=False).iloc[0]["Role"]
+    strongest_skill = display_df.sort_values("Match %", ascending=False).iloc[0]["Role"]
+    lowest_effort = display_df.sort_values("Effort Score").iloc[0]["Role"]
+
+    st.info(f"Highest Economic Upside: {best_role}")
+    st.info(f"Strongest Skill Alignment: {strongest_skill}")
+    st.info(f"Lowest Effort Entry: {lowest_effort}")
 # ----------------------------------
 # TAB 3 — COUNTRY HEATMAP
 # ----------------------------------
@@ -286,6 +296,9 @@ with tab3:
 # ----------------------------------
 # TAB 4 — GROWTH SIMULATOR
 # ----------------------------------
+# ----------------------------------
+# TAB 4 — GROWTH SIMULATOR
+# ----------------------------------
 with tab4:
 
     st.subheader("🎯 Career Growth Simulator")
@@ -294,15 +307,27 @@ with tab4:
 
     if new_skill:
 
+        job_row = jobs_df[jobs_df["Role"] == top["Role"]].iloc[0]
+
+        # Recompute job embedding properly
+        job_text = job_row["Role"] + " " + job_row["Skills"]
+        job_embedding = model.encode(job_text)
+
         simulated_skills = extracted_skills + [new_skill]
 
-        job_row = jobs_df[jobs_df["Role"] == top["Role"]].iloc[0]
         required_skills = job_row["Skills"].split(",")
 
         skill_overlap = len(set(simulated_skills) & set(required_skills))
         skill_score = skill_overlap / max(len(required_skills), 1)
 
-        simulated_match = 0.5 * similarity + 0.3 * skill_score + 0.2 * exp_score
+        exp_score = 1 if experience >= job_row["Experience"] else experience / max(job_row["Experience"], 1)
+
+        similarity_sim = cosine_similarity(
+            [resume_embedding],
+            [job_embedding]
+        )[0][0]
+
+        simulated_match = 0.5 * similarity_sim + 0.3 * skill_score + 0.2 * exp_score
 
         simulated_probability = min(
             (0.6 * simulated_match +
@@ -313,7 +338,6 @@ with tab4:
         )
 
         st.success(f"New Interview Probability: {simulated_probability:.2f}%")
-
 # ----------------------------------
 # TAB 5 — PERFORMANCE
 # ----------------------------------
@@ -337,23 +361,14 @@ def generate_pdf():
     elements.append(Spacer(1, 12))
 
     for _, row in results_df.iterrows():
-    elements.append(
-        Paragraph(
-            f"{row['Role']} - {row['Country']} - {row['Interview Probability']:.2f}%",
-            styles["Normal"]
-           )
+        elements.append(
+            Paragraph(
+                f"{row['Role']} - {row['Country']} - {row['Interview Probability']:.2f}%",
+                styles["Normal"]
+            )
         )
         elements.append(Spacer(1, 6))
 
     doc.build(elements)
     buffer.seek(0)
     return buffer
-
-pdf_file = generate_pdf()
-
-st.download_button(
-    label="📄 Download Career Report",
-    data=pdf_file,
-    file_name="career_report.pdf",
-    mime="application/pdf"
-)
