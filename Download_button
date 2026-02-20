@@ -1,0 +1,8 @@
+pdf_file = generate_pdf(results_df, extracted_skills, experience)
+
+st.download_button(
+    label="Download Career Report",
+    data=pdf_file,
+    file_name="career_report.pdf",
+    mime="application/pdf"
+)
