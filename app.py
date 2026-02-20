@@ -2,225 +2,167 @@ import streamlit as st
 import pandas as pd
 import pdfplumber
 import re
-import random
+import requests
 import plotly.express as px
 import pycountry
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from openai import OpenAI
 
-# -----------------------------
+# -----------------------------------
 # CONFIG
-# -----------------------------
+# -----------------------------------
 st.set_page_config(page_title="AI Career Intelligence", layout="wide")
 
-# -----------------------------
-# SESSION STATE
-# -----------------------------
-if "page" not in st.session_state:
-    st.session_state.page = 1
-if "resume_text" not in st.session_state:
-    st.session_state.resume_text = None
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
-# -----------------------------
-# LOAD
-# -----------------------------
+# -----------------------------------
+# LOAD MODEL
+# -----------------------------------
 @st.cache_resource
 def load_model():
     return SentenceTransformer("all-MiniLM-L6-v2")
 
-@st.cache_data
-def load_jobs():
-    return pd.read_csv("jobs_dataset.csv")
-
 model = load_model()
-jobs_df = load_jobs()
 
-# ======================================================
-# PAGE 1 — LOGIN
-# ======================================================
-if st.session_state.page == 1:
+# -----------------------------------
+# ADZUNA LIVE JOB COUNT
+# -----------------------------------
+def get_live_demand(role, country="gb"):
+    try:
+        url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1"
+        params = {
+            "app_id": st.secrets["ADZUNA_APP_ID"],
+            "app_key": st.secrets["ADZUNA_APP_KEY"],
+            "results_per_page": 1,
+            "what": role
+        }
+        response = requests.get(url, params=params)
+        data = response.json()
+        return data.get("count", 0)
+    except:
+        return 0
 
-    st.title("🚀 AI Career Intelligence Platform")
-    st.subheader("Strategic Career Positioning Engine")
+# -----------------------------------
+# RESUME PROCESSING
+# -----------------------------------
+st.title("🚀 AI Career Intelligence Platform")
 
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+uploaded_file = st.file_uploader("Upload Resume (PDF)", type=["pdf"])
 
-    if st.button("Enter Platform"):
-        if username and password:
-            st.session_state.page = 2
-            st.rerun()
+if not uploaded_file:
+    st.stop()
 
-# ======================================================
-# PAGE 2 — UPLOAD
-# ======================================================
-elif st.session_state.page == 2:
+resume_text = ""
+with pdfplumber.open(uploaded_file) as pdf:
+    for page in pdf.pages:
+        resume_text += page.extract_text()
 
-    st.title("Upload Resume")
+resume_embedding = model.encode(resume_text)
 
-    uploaded_file = st.file_uploader("Upload Resume (PDF)", type=["pdf"])
+# Extract skills from resume (basic version)
+resume_skills = re.findall(r"\b[A-Za-z\+]{2,}\b", resume_text.lower())
+resume_skills = list(set(resume_skills))
 
-    if uploaded_file:
-        resume_text = ""
-        with pdfplumber.open(uploaded_file) as pdf:
-            for page in pdf.pages:
-                resume_text += page.extract_text()
+# -----------------------------------
+# SAMPLE ROLE LIST (Replace with DB later)
+# -----------------------------------
+roles = [
+    "Business Intelligence Analyst",
+    "Data Analyst",
+    "Product Analyst",
+    "Fraud Risk Analyst",
+    "Senior Data Analyst"
+]
 
-        st.session_state.resume_text = resume_text
-        st.success("Resume processed successfully")
+results = []
 
-        if st.button("Run AI Market Analysis"):
-            st.session_state.page = 3
-            st.rerun()
+for role in roles:
 
-# ======================================================
-# PAGE 3 — DASHBOARD
-# ======================================================
-elif st.session_state.page == 3:
+    job_embedding = model.encode(role)
+    similarity = cosine_similarity(
+        [resume_embedding],
+        [job_embedding]
+    )[0][0]
 
-    st.title("AI Career Intelligence Dashboard")
+    live_demand = get_live_demand(role)
 
-    resume_text = st.session_state.resume_text
+    salary_estimate = 70000  # placeholder
 
-    # -----------------------------
-    # MATCH ENGINE
-    # -----------------------------
-    resume_embedding = model.encode(resume_text)
-    results = []
+    salary_norm = salary_estimate / 100000
 
-    max_salary = jobs_df["AvgSalary"].max()
-
-    for _, row in jobs_df.iterrows():
-
-        job_text = row["Role"] + " " + row["Skills"]
-        job_embedding = model.encode(job_text)
-
-        similarity = cosine_similarity(
-            [resume_embedding], [job_embedding]
-        )[0][0]
-
-        match_score = similarity
-
-        interview_probability = (
-            0.5 * similarity +
-            0.3 * row["Demand"] +
-            0.2 * (1 - row["Competition"])
-        ) * 100
-
-        market_opportunity = (
-            row["Demand"] * row["AvgSalary"]
-        ) / max(row["Competition"], 0.01)
-
-        results.append({
-            "Role": row["Role"],
-            "Country": row["Country"],
-            "Match %": round(match_score * 100, 2),
-            "Demand": round(row["Demand"] * 100, 2),
-            "Competition": round(row["Competition"] * 100, 2),
-            "Interview Probability": round(interview_probability, 2),
-            "Market Opportunity Index": round(market_opportunity, 2)
-        })
-
-    df = pd.DataFrame(results)
-
-    # -----------------------------
-    # TABS
-    # -----------------------------
-    tab1, tab2, tab3, tab4 = st.tabs(
-        ["🌍 Global Market",
-         "📊 Competitive Intelligence",
-         "🧠 AI Agent",
-         "🕉 Daily Boost"]
+    global_score = (
+        0.5 * similarity +
+        0.3 * (live_demand / 100000 if live_demand else 0) +
+        0.2 * salary_norm
     )
 
-    # ==================================================
-    # TAB 1 — GLOBAL MARKET
-    # ==================================================
-    with tab1:
+    results.append({
+        "Role": role,
+        "Match %": round(similarity * 100, 2),
+        "Live Demand": live_demand,
+        "Interview Probability": round(global_score * 100, 2)
+    })
 
-        all_countries = sorted(df["Country"].unique())
-        selected_country = st.selectbox(
-            "Select Country",
-            ["Worldwide"] + all_countries
-        )
+df = pd.DataFrame(results)
+df = df.sort_values("Interview Probability", ascending=False)
 
-        if selected_country != "Worldwide":
-            filtered_df = df[df["Country"] == selected_country]
-        else:
-            filtered_df = df
+st.subheader("🌍 Global Role Ranking (Resume First)")
+st.dataframe(df, use_container_width=True)
 
-        filtered_df = filtered_df.sort_values(
-            "Interview Probability",
-            ascending=False
-        )
+# -----------------------------------
+# INTERACTIVE GRAPH
+# -----------------------------------
+fig = px.bar(
+    df,
+    x="Role",
+    y="Interview Probability",
+    hover_data=["Match %", "Live Demand"],
+    height=400
+)
 
-        st.dataframe(filtered_df.head(10), use_container_width=True)
+st.plotly_chart(fig, use_container_width=True)
 
-    # ==================================================
-    # TAB 2 — COMPETITIVE INTELLIGENCE
-    # ==================================================
-    with tab2:
+# -----------------------------------
+# SKILL GAP ANALYSIS
+# -----------------------------------
+st.subheader("🧠 Skill Gap Analysis")
 
-        left, right = st.columns([1, 2])
+top_role = df.iloc[0]["Role"]
 
-        with left:
-            country_filter = st.selectbox(
-                "Filter by Country",
-                ["Worldwide"] + all_countries,
-                key="tab2_country"
-            )
+role_keywords = top_role.lower().split()
+missing_skills = [
+    word for word in role_keywords
+    if word not in resume_skills
+]
 
-        if country_filter != "Worldwide":
-            comp_df = df[df["Country"] == country_filter]
-        else:
-            comp_df = df
+st.write("Top Role:", top_role)
+st.write("Potential Missing Skills:", missing_skills)
 
-        top5 = comp_df.sort_values(
-            "Interview Probability",
-            ascending=False
-        ).head(5)
+# -----------------------------------
+# GPT ROADMAP
+# -----------------------------------
+st.subheader("🎯 Personalized Roadmap")
 
-        fig = px.bar(
-            top5,
-            x="Role",
-            y=["Demand", "Competition", "Match %"],
-            barmode="group",
-            height=350
-        )
+if st.button("Generate AI Roadmap"):
 
-        st.plotly_chart(fig, use_container_width=True)
+    prompt = f"""
+    The candidate resume text is:
+    {resume_text}
 
-    # ==================================================
-    # TAB 3 — FLOATING AI AGENT
-    # ==================================================
-    with tab3:
+    Target role:
+    {top_role}
 
-        st.markdown("### 🧠 Smart Career Assistant")
+    Provide:
+    1. Skill gaps
+    2. Certifications
+    3. Project ideas
+    4. 90-day roadmap
+    """
 
-        question = st.text_input("Ask anything about skills, certifications...")
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}]
+    )
 
-        if question:
-            st.info("AI Response:")
-            st.write(
-                "To improve your positioning, focus on high-demand skills, "
-                "build measurable projects, and align certifications with target roles."
-            )
-
-    # ==================================================
-    # TAB 4 — DAILY BOOST
-    # ==================================================
-    with tab4:
-
-        gita_quotes = [
-            "You have the right to perform your duty, but not to the fruits of your actions.",
-            "Set thy heart upon thy work, but never on its reward.",
-            "The soul is neither born, nor does it die."
-        ]
-
-        funny_quotes = [
-            "Job searching is just speed dating with companies.",
-            "If at first you don’t succeed, redefine success.",
-            "LinkedIn stalking is research."
-        ]
-
-        st.success(random.choice(gita_quotes + funny_quotes))
+    st.write(response.choices[0].message.content)
