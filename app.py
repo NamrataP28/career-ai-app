@@ -9,11 +9,11 @@ import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="AI Career Intelligence", layout="wide")
 
-st.title("🚀 AI Career Intelligence Platform")
-st.markdown("AI-powered global career probability engine")
+st.title("🚀 AI Career Intelligence Engine")
+st.markdown("Global AI-powered career growth system")
 
 # -----------------------------
-# LOAD MODEL (Cached)
+# LOAD MODEL
 # -----------------------------
 
 @st.cache_resource
@@ -23,7 +23,7 @@ def load_model():
 model = load_model()
 
 # -----------------------------
-# LOAD DATASET
+# LOAD DATA
 # -----------------------------
 
 @st.cache_data
@@ -33,15 +33,25 @@ def load_jobs():
 jobs_df = load_jobs()
 
 # -----------------------------
-# RESUME UPLOAD
+# SIDEBAR
 # -----------------------------
 
-st.sidebar.header("📄 Upload Resume")
-uploaded_file = st.sidebar.file_uploader("Upload PDF", type=["pdf"])
+st.sidebar.header("📄 Resume Upload")
+uploaded_file = st.sidebar.file_uploader("Upload Resume (PDF)", type=["pdf"])
+
+st.sidebar.header("🌍 Home Country")
+home_country = st.sidebar.selectbox(
+    "Select Your Country",
+    sorted(jobs_df["Country"].unique())
+)
 
 resume_text = ""
 extracted_skills = []
 experience = 0
+
+# -----------------------------
+# RESUME PROCESSING
+# -----------------------------
 
 if uploaded_file:
     with pdfplumber.open(uploaded_file) as pdf:
@@ -62,10 +72,10 @@ if uploaded_file:
     st.sidebar.success("Resume processed")
 
 else:
-    st.warning("Upload resume to begin")
+    st.warning("Upload resume to start")
 
 # -----------------------------
-# AI SIMILARITY SCORING
+# MATCHING ENGINE
 # -----------------------------
 
 if uploaded_file:
@@ -105,24 +115,42 @@ if uploaded_file:
             row["Visa"]
         )
 
+        market_difficulty = (
+            row["Competition"] * 0.6 +
+            (1 - row["Demand"]) * 0.4
+        ) * 100
+
         results.append({
             "Role": row["Role"],
             "Country": row["Country"],
             "Match %": round(match_score * 100, 2),
-            "Hiring Probability %": round(probability * 100, 2)
+            "Estimated Interview Probability": round(probability * 100, 2),
+            "Avg Salary ($)": row["AvgSalary"],
+            "Market Difficulty %": round(market_difficulty, 2)
         })
 
     results_df = pd.DataFrame(results)
+
+    # Home country boost
+    results_df["HomeBoost"] = results_df["Country"].apply(
+        lambda x: 1.2 if x == home_country else 1
+    )
+
+    results_df["AdjustedScore"] = (
+        results_df["Estimated Interview Probability"] *
+        results_df["HomeBoost"]
+    )
+
     results_df = results_df.sort_values(
-        by="Hiring Probability %",
+        by="AdjustedScore",
         ascending=False
     ).head(3)
 
     # -----------------------------
-    # DASHBOARD OUTPUT
+    # DASHBOARD
     # -----------------------------
 
-    st.subheader("👤 Extracted Profile")
+    st.subheader("👤 Profile Intelligence")
     st.write("Skills:", extracted_skills)
     st.write("Experience:", experience, "years")
 
@@ -130,18 +158,19 @@ if uploaded_file:
 
     col1, col2, col3 = st.columns(3)
 
-    for i in range(3):
+    for i in range(len(results_df)):
         col = [col1, col2, col3][i]
+
         col.metric(
             results_df.iloc[i]["Role"],
-            f"{results_df.iloc[i]['Hiring Probability %']}%",
+            f"{results_df.iloc[i]['Estimated Interview Probability']:.2f}%",
             results_df.iloc[i]["Country"]
         )
 
     st.markdown("---")
 
-    tab1, tab2, tab3 = st.tabs(
-        ["🎯 Top Matches", "📈 Resume Improvement", "📊 Probability Chart"]
+    tab1, tab2, tab3, tab4 = st.tabs(
+        ["🎯 Matches", "📈 Salary & Market", "🧠 Improvement Roadmap", "📊 Charts"]
     )
 
     # -----------------------------
@@ -149,33 +178,55 @@ if uploaded_file:
     # -----------------------------
 
     with tab1:
-        st.dataframe(results_df, use_container_width=True)
+        st.dataframe(
+            results_df[
+                ["Role","Country","Match %","Estimated Interview Probability"]
+            ],
+            use_container_width=True
+        )
 
     # -----------------------------
     # TAB 2
     # -----------------------------
 
     with tab2:
-
-        top_job = results_df.iloc[0]["Role"]
-        selected_row = jobs_df[jobs_df["Role"] == top_job].iloc[0]
-
-        missing = set(selected_row["Skills"].split(",")) - set(extracted_skills)
-
-        st.subheader("Resume Improvement Suggestions")
-        st.write("Top role:", top_job)
-        st.write("Missing Skills to Improve:", list(missing))
-
-        if experience < selected_row["Experience"]:
-            st.write("Increase experience exposure to reach required level")
+        st.dataframe(
+            results_df[
+                ["Role","Country","Avg Salary ($)","Market Difficulty %"]
+            ],
+            use_container_width=True
+        )
 
     # -----------------------------
     # TAB 3
     # -----------------------------
 
     with tab3:
+
+        top_job = results_df.iloc[0]["Role"]
+        selected_row = jobs_df[jobs_df["Role"] == top_job].iloc[0]
+
+        missing = set(selected_row["Skills"].split(",")) - set(extracted_skills)
+
+        st.subheader("Next Best Action Plan")
+        st.write("Target Role:", top_job)
+        st.write("Add Skills:", list(missing))
+
+        if experience < selected_row["Experience"]:
+            st.write(
+                f"Gain {selected_row['Experience'] - experience} more years relevant exposure"
+            )
+
+        st.write("Focus market:", results_df.iloc[0]["Country"])
+
+    # -----------------------------
+    # TAB 4
+    # -----------------------------
+
+    with tab4:
+
         fig, ax = plt.subplots()
-        ax.bar(results_df["Role"], results_df["Hiring Probability %"])
-        ax.set_ylabel("Hiring Probability %")
+        ax.bar(results_df["Role"], results_df["Estimated Interview Probability"])
+        ax.set_ylabel("Interview Probability (%)")
         ax.set_xticklabels(results_df["Role"], rotation=45)
         st.pyplot(fig)
