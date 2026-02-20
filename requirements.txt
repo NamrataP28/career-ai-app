@@ -4,4 +4,6 @@ pdfplumber
 sentence-transformers
 scikit-learn
 plotly
+requests
+openai
 pycountry
