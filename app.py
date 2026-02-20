@@ -197,7 +197,7 @@ with tab1:
         "Avg Salary ($)"
     ]], use_container_width=True)
 # ----------------------------------
-# TAB 2 — Competitive analysis
+# TAB 2 — Competitive Analysis
 # ----------------------------------
 with tab2:
 
@@ -205,9 +205,10 @@ with tab2:
 
     comparison_df = results_df.copy()
 
+    # Avoid division by zero
     comparison_df["Effort Score"] = (
         comparison_df["Competition"] /
-        comparison_df["Demand"]
+        comparison_df["Demand"].replace(0, 0.01)
     ).round(2)
 
     display_df = comparison_df[[
@@ -223,6 +224,9 @@ with tab2:
 
     st.dataframe(display_df, use_container_width=True)
 
+    # ----------------------------------
+    # Demand vs Competition vs Strength
+    # ----------------------------------
     st.markdown("### 📊 Demand vs Competition vs Your Strength")
 
     fig, ax = plt.subplots(figsize=(8,4))
@@ -234,47 +238,59 @@ with tab2:
     ax.bar([i + 0.50 for i in x], display_df["Match %"], width=0.25, label="Your Strength")
 
     ax.set_xticks([i + 0.25 for i in x])
-    ax.set_xticklabels(display_df["Role"], rotation=30)
+    ax.set_xticklabels(display_df["Role"], rotation=25)
     ax.set_ylabel("Score (%)")
     ax.legend()
 
     st.pyplot(fig)
 
-    st.markdown("### 💰 Economic Opportunity")
+    # ----------------------------------
+    # Economic Opportunity
+    # ----------------------------------
+    st.markdown("### 💰 Economic Opportunity (ROI by Role)")
 
     fig2, ax2 = plt.subplots(figsize=(8,4))
     ax2.bar(display_df["Role"], display_df["Market ROI Score"])
-    ax2.set_ylabel("Market ROI")
+    ax2.set_ylabel("Market ROI Score")
+    ax2.set_title("Economic Upside Comparison")
+
     st.pyplot(fig2)
 
+    # ----------------------------------
+    # Interpretation
+    # ----------------------------------
     st.markdown("### 🧠 Interpretation")
 
     for _, row in display_df.iterrows():
-        st.markdown(f"**{row['Role']}**")
+
+        st.markdown(f"#### {row['Role']}")
 
         if row["Demand"] > row["Competition"]:
-            st.success("Demand exceeds competition → structural opportunity")
+            st.success("Demand exceeds competition → Structural market opportunity.")
         else:
-            st.warning("Competition heavier than demand → difficult entry")
+            st.warning("Competition heavier than demand → Entry difficulty higher.")
 
         if row["Match %"] > 70:
-            st.success("Strong skill alignment")
+            st.success("Strong skill alignment.")
         elif row["Match %"] > 50:
-            st.info("Moderate alignment")
+            st.info("Moderate alignment — skill improvement helps.")
         else:
-            st.error("Weak alignment – improvement required")
+            st.error("Weak alignment — significant skill investment required.")
 
         st.markdown("---")
-        
-     st.markdown("### 📊 Strategic Insight Summary")
 
-    best_role = display_df.sort_values("Market ROI Score", ascending=False).iloc[0]["Role"]
+    # ----------------------------------
+    # Strategic Insight Summary
+    # ----------------------------------
+    st.markdown("### 📊 Strategic Insight Summary")
+
+    best_roi = display_df.sort_values("Market ROI Score", ascending=False).iloc[0]["Role"]
     strongest_skill = display_df.sort_values("Match %", ascending=False).iloc[0]["Role"]
     lowest_effort = display_df.sort_values("Effort Score").iloc[0]["Role"]
 
-    st.info(f"Highest Economic Upside: {best_role}")
-    st.info(f"Strongest Skill Alignment: {strongest_skill}")
-    st.info(f"Lowest Effort Entry: {lowest_effort}")
+    st.info(f"💰 Highest Economic Upside: {best_roi}")
+    st.info(f"🧠 Strongest Skill Alignment: {strongest_skill}")
+    st.info(f"⚡ Lowest Effort Entry: {lowest_effort}")
 # ----------------------------------
 # TAB 3 — COUNTRY HEATMAP
 # ----------------------------------
