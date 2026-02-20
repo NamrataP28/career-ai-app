@@ -3,4 +3,5 @@ pandas
 numpy
 pdfplumber
 scikit-learn
-openai
+sentence-transformers
+matplotlib
