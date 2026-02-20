@@ -283,6 +283,28 @@ if question:
 
     else:
         st.write("Be strategic: improve skills → build proof → apply selectively.")
+
+with tab4:
+
+    st.subheader("🧠 Career Performance & Mental Edge")
+
+    st.markdown("### 🔥 High-Performance Habits")
+
+    st.write("• 90-minute focused skill building daily")
+    st.write("• Track 3 applications per day")
+    st.write("• Weekly mock interview")
+    st.write("• Sunday strategic review")
+
+    st.markdown("### 🧘 Stress Management During Job Search")
+
+    st.write("• 20 min daily walk")
+    st.write("• No applications after 8 PM")
+    st.write("• Weekly skill win tracking")
+    st.write("• Controlled information intake (avoid comparison overload)")
+
+    st.markdown("### 🎯 Performance Rule")
+
+    st.info("Progress over perfection. Measure effort, not outcomes.")
 # ----------------------------------
 # PDF REPORT GENERATOR
 # ----------------------------------
