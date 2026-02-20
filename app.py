@@ -151,10 +151,12 @@ st.subheader("🏆 Top 3 Strategic Career Options")
 
 cols = st.columns(3)
 for i in range(len(results_df)):
-    cols[i].metric(
-        results_df.iloc[i]["Role"],
-        f"{results_df.iloc[i]['Estimated Interview Probability']}%",
-        results_df.iloc[i]["Country"]
+prob = results_df.iloc[i]["Estimated Interview Probability"]
+
+cols[i].metric(
+    results_df.iloc[i]["Role"],
+    f"{prob:.2f}%",
+    results_df.iloc[i]["Country"]
     )
 
 st.markdown("---")
