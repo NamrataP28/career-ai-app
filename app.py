@@ -6,7 +6,6 @@ from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 import matplotlib.pyplot as plt
 import pycountry
-from openai import OpenAI
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
@@ -207,31 +206,58 @@ with tab2:
 # -----------------------------
 # TAB 3 — GPT ADVISOR
 # -----------------------------
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 with tab3:
-    st.subheader("🤖 Strategic Career Advisor")
 
-    user_question = st.text_input("Ask a strategic career question")
+    st.subheader("🤖 AI Career Strategist")
 
-    if user_question:
+    top_role = results_df.iloc[0]["Role"]
+    top_country = results_df.iloc[0]["Country"]
+    top_probability = results_df.iloc[0]["Estimated Interview Probability"]
 
-        prompt = f"""
-        Candidate Skills: {extracted_skills}
-        Experience: {experience}
-        Top 3 Roles: {results_df['Role'].tolist()}
-        Countries: {results_df['Country'].tolist()}
+    selected_row = jobs_df[jobs_df["Role"] == top_role].iloc[0]
+    required_skills = selected_row["Skills"].split(",")
 
-        Provide practical, realistic career advice.
-        """
+    missing_skills = list(set(required_skills) - set(extracted_skills))
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}]
-        )
+    st.markdown("### 🎯 Strategic Career Insight")
 
-        st.write(response.choices[0].message.content)
+    if top_probability > 75:
+        st.success("You are strongly positioned for this role.")
+    elif top_probability > 50:
+        st.info("You are moderately competitive. Strategic improvement needed.")
+    else:
+        st.warning("You need focused improvement to be competitive.")
 
+    st.markdown("### 🌍 Recommended Market")
+    st.write(f"Best opportunity currently in **{top_country}**")
+
+    st.markdown("### 📈 Skill Gap Analysis")
+
+    if missing_skills:
+        st.write("To improve probability, focus on:")
+        for skill in missing_skills:
+            st.write(f"• {skill}")
+    else:
+        st.success("You meet all core skill requirements.")
+
+    st.markdown("### 🚀 90-Day Improvement Plan")
+
+    roadmap = []
+
+    if missing_skills:
+        roadmap.append("Month 1: Learn missing core tools")
+        roadmap.append("Month 2: Build 2 portfolio projects")
+        roadmap.append("Month 3: Apply strategically to target market")
+
+    if experience < selected_row["Experience"]:
+        roadmap.append("Gain practical project experience or freelance exposure")
+
+    if not roadmap:
+        roadmap.append("Focus on networking & high-value referrals")
+
+    for step in roadmap:
+        st.write(f"• {step}")
 # ----------------------------------
 # PDF REPORT GENERATOR
 # ----------------------------------
