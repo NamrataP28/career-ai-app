@@ -17,7 +17,12 @@ import io
 st.set_page_config(page_title="AI Career Intelligence Engine", layout="wide")
 
 st.title("🚀 AI Career Intelligence Engine")
-st.markdown("AI-powered global career growth intelligence platform")
+st.markdown("### 💼 Real-World Project Simulation")
+
+project_list = selected_row["Projects"].split(";")
+
+for project in project_list:
+    st.write(f"• {project}")
 
 # ----------------------------------
 # BASIC LOGIN (SESSION)
@@ -187,20 +192,19 @@ with tab1:
 # TAB 2
 # -----------------------------
 with tab2:
+
     colA, colB = st.columns(2)
 
     with colA:
-        fig1, ax1 = plt.subplots(figsize=(4,3))
-        ax1.bar(results_df["Role"], results_df["Estimated Interview Probability"])
-        ax1.set_title("Interview Probability (%)")
-        ax1.tick_params(axis='x', rotation=45)
+        fig1, ax1 = plt.subplots(figsize=(3,2))
+        ax1.barh(results_df["Role"], results_df["Estimated Interview Probability"])
+        ax1.set_title("Interview Probability")
         st.pyplot(fig1)
 
     with colB:
-        fig2, ax2 = plt.subplots(figsize=(4,3))
-        ax2.bar(results_df["Role"], results_df["Market Difficulty %"])
-        ax2.set_title("Market Difficulty (%)")
-        ax2.tick_params(axis='x', rotation=45)
+        fig2, ax2 = plt.subplots(figsize=(3,2))
+        ax2.barh(results_df["Role"], results_df["Market Difficulty %"])
+        ax2.set_title("Market Difficulty")
         st.pyplot(fig2)
 
 # -----------------------------
@@ -258,6 +262,27 @@ with tab3:
 
     for step in roadmap:
         st.write(f"• {step}")
+        st.markdown("---")
+st.markdown("### 💬 Career Strategy Chat")
+
+question = st.text_input("Ask about your career strategy")
+
+if question:
+
+    if "salary" in question.lower():
+        st.write(f"Average salary for your best role is ${selected_row['AvgSalary']}")
+
+    elif "improve" in question.lower():
+        st.write("Focus on missing skills and increase market exposure through real projects.")
+
+    elif "country" in question.lower():
+        st.write(f"{top_country} currently gives you strongest probability.")
+
+    elif "stress" in question.lower():
+        st.write("Structured routine + skill progress tracking reduces job search anxiety.")
+
+    else:
+        st.write("Be strategic: improve skills → build proof → apply selectively.")
 # ----------------------------------
 # PDF REPORT GENERATOR
 # ----------------------------------
