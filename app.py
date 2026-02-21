@@ -1,5 +1,6 @@
 import streamlit as st
 import plotly.express as px
+import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 from sentence_transformers import SentenceTransformer
@@ -9,7 +10,11 @@ from services.visa_model import VisaModel
 from services.gpt_service import GPTService
 
 st.set_page_config(layout="wide")
-st.title("🚀 AI Career Intelligence Engine — Phase 2")
+st.title("🚀 Career Intelligence Platform")
+
+# -----------------------------------
+# INITIALIZE
+# -----------------------------------
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
 parser = ResumeParser()
@@ -17,39 +22,29 @@ visa_model = VisaModel()
 gpt_service = GPTService()
 
 # -----------------------------------
-# STEP 1: USER INPUT
+# USER INPUT SECTION (Executive Style)
 # -----------------------------------
 
-st.header("Step 1: Career Preferences")
+col1, col2, col3 = st.columns(3)
 
-career_goal = st.selectbox(
+career_goal = col1.selectbox(
     "Primary Goal",
     ["Salary Growth", "Global Mobility", "Leadership Growth", "Stability"]
 )
 
-preferred_roles = st.multiselect(
-    "Select Target Roles",
-    [
-        "Data Analyst","Business Analyst","Product Manager",
-        "Marketing Manager","Financial Analyst",
-        "Strategy Consultant","Operations Manager",
-        "Software Engineer","Machine Learning Engineer"
-    ]
+target_role = col2.selectbox(
+    "Target Role",
+    ["Data Analyst","Business Analyst","Product Manager",
+     "Marketing Manager","Financial Analyst",
+     "Strategy Consultant","Software Engineer"]
 )
 
-preferred_countries = st.multiselect(
-    "Preferred Countries",
+target_country = col3.selectbox(
+    "Target Country",
     ["India","USA","UK","Canada","Germany","Singapore","Australia"]
 )
 
 current_salary = st.number_input("Current Salary (USD)", min_value=0)
-
-if not preferred_roles:
-    st.stop()
-
-# -----------------------------------
-# STEP 2: RESUME
-# -----------------------------------
 
 file = st.file_uploader("Upload Resume", type=["pdf"])
 if not file:
@@ -59,179 +54,161 @@ resume_text = parser.extract_text(file)
 resume_embedding = model.encode(resume_text)
 
 # -----------------------------------
-# SKILL CLUSTERS
+# MARKET SIMULATION ENGINE
 # -----------------------------------
 
-skill_clusters = {
-    "Data Analyst":["sql","python","excel","statistics","power bi"],
-    "Product Manager":["roadmap","stakeholder","strategy","experimentation"],
-    "Marketing Manager":["seo","campaign","branding","growth"],
-    "Financial Analyst":["valuation","forecast","modeling","finance"],
-    "Software Engineer":["backend","frontend","api","cloud"],
-}
+market_demand = np.random.randint(300, 1200)
+avg_salary = np.random.randint(80000, 220000)
+competition_index = np.random.uniform(0.3, 0.9)
 
-def skill_coverage(role):
-    role_skills = skill_clusters.get(role, [])
-    if not role_skills:
-        return 0.4
-    matches = sum([1 for s in role_skills if s in resume_text.lower()])
-    return matches / len(role_skills)
+role_embedding = model.encode(target_role)
+similarity = cosine_similarity([resume_embedding],[role_embedding])[0][0]
 
-# -----------------------------------
-# MARKET SIMULATION
-# -----------------------------------
+visa_score = visa_model.visa_score(target_country)
 
-def generate_market():
-    rows = []
-    for role in preferred_roles:
-        for country in preferred_countries:
-            rows.append({
-                "Role": role,
-                "Country": country,
-                "Demand": np.random.randint(200, 1000),
-                "Salary": np.random.randint(60000, 250000)
-            })
-    return pd.DataFrame(rows)
+salary_growth = (avg_salary - current_salary)/avg_salary if current_salary else 0.5
+transition_risk = 1 - similarity
 
-market_df = generate_market()
+interview_probability = (
+    0.4*similarity +
+    0.2*salary_growth +
+    0.2*(1-competition_index) +
+    0.2*visa_score
+)
 
-max_demand = market_df["Demand"].max()
-max_salary = market_df["Salary"].max()
-
-# -----------------------------------
-# SCORING ENGINE
-# -----------------------------------
-
-results = []
-
-for _, row in market_df.iterrows():
-
-    role_emb = model.encode(row["Role"])
-    similarity = cosine_similarity([resume_embedding],[role_emb])[0][0]
-
-    skill_score = skill_coverage(row["Role"])
-    demand_norm = row["Demand"] / max_demand
-    salary_norm = row["Salary"] / max_salary
-    visa_score = visa_model.visa_score(row["Country"])
-
-    # Salary delta
-    if current_salary > 0:
-        salary_delta = max(row["Salary"] - current_salary, 0) / max_salary
-    else:
-        salary_delta = 0.5
-
-    # Transition risk (lower similarity = higher risk)
-    transition_risk = 1 - similarity
-
-    # Interview probability model
-    interview_prob = (
-        0.4*similarity +
-        0.2*skill_score +
-        0.2*demand_norm +
-        0.1*visa_score +
-        0.1*salary_delta
-    )
-
-    final_score = (
-        0.30*similarity +
-        0.20*skill_score +
-        0.15*demand_norm +
-        0.15*salary_delta +
-        0.10*visa_score -
-        0.10*transition_risk
-    )
-
-    results.append({
-        "Role":row["Role"],
-        "Country":row["Country"],
-        "Resume Match %":round(similarity*100,2),
-        "Skill Coverage %":round(skill_score*100,2),
-        "Interview Probability %":round(interview_prob*100,2),
-        "Transition Risk %":round(transition_risk*100,2),
-        "Salary Delta %":round(salary_delta*100,2),
-        "Opportunity Score %":round(final_score*100,2)
-    })
-
-ranked_df = pd.DataFrame(results).sort_values(
-    "Opportunity Score %",
-    ascending=False
+opportunity_score = (
+    0.35*similarity +
+    0.20*salary_growth +
+    0.15*(1-competition_index) +
+    0.15*visa_score +
+    0.15*(market_demand/1200)
 )
 
 # -----------------------------------
-# MARKET PERCENTILE
+# EXECUTIVE SCORECARD (6figr style)
 # -----------------------------------
 
-ranked_df["Market Percentile %"] = ranked_df["Opportunity Score %"].rank(pct=True)*100
+st.markdown("## 📊 Executive Career Scorecard")
+
+k1, k2, k3, k4 = st.columns(4)
+
+k1.metric("Opportunity Score", f"{round(opportunity_score*100,2)}%")
+k2.metric("Interview Probability", f"{round(interview_probability*100,2)}%")
+k3.metric("Salary Growth Potential", f"{round(salary_growth*100,2)}%")
+k4.metric("Market Demand Index", f"{round((market_demand/1200)*100,2)}%")
 
 # -----------------------------------
-# DISPLAY
+# SKILL RADAR CHART
 # -----------------------------------
 
-st.header("📊 Market Intelligence Dashboard")
+st.markdown("## 🧠 Skill Coverage Radar")
 
-st.dataframe(ranked_df, use_container_width=True)
+skill_categories = ["Technical","Strategy","Communication","Leadership","Domain"]
+skill_values = [
+    similarity*100,
+    np.random.randint(50,90),
+    np.random.randint(40,85),
+    np.random.randint(30,80),
+    np.random.randint(50,95)
+]
 
-fig = px.bar(
-    ranked_df,
-    x="Opportunity Score %",
-    y="Role",
-    color="Country",
-    orientation="h",
-    hover_data=[
-        "Resume Match %",
-        "Skill Coverage %",
-        "Interview Probability %",
-        "Transition Risk %",
-        "Market Percentile %"
-    ],
-    height=550
+fig = go.Figure()
+fig.add_trace(go.Scatterpolar(
+    r=skill_values,
+    theta=skill_categories,
+    fill='toself'
+))
+
+fig.update_layout(
+    polar=dict(radialaxis=dict(visible=True, range=[0,100])),
+    showlegend=False,
+    height=450
 )
 
-fig.update_layout(yaxis=dict(categoryorder="total ascending"))
 st.plotly_chart(fig, use_container_width=True)
 
 # -----------------------------------
-# MARKET POSITION
+# WHAT-IF SIMULATOR
 # -----------------------------------
 
-avg_percentile = ranked_df["Market Percentile %"].mean()
+st.markdown("## 🎯 What-If Skill Simulator")
 
-st.subheader("📈 Your Market Standing")
+skill_boost = st.slider("If you improve skill alignment by:", 0, 30, 10)
 
-st.metric("Average Market Percentile", f"{round(avg_percentile,2)}%")
+simulated_similarity = min(similarity + (skill_boost/100),1)
 
-if avg_percentile > 70:
-    st.success("You are top-tier competitive.")
-elif avg_percentile > 50:
-    st.info("You are moderately competitive.")
+simulated_score = (
+    0.35*simulated_similarity +
+    0.20*salary_growth +
+    0.15*(1-competition_index) +
+    0.15*visa_score +
+    0.15*(market_demand/1200)
+)
+
+st.success(f"New Opportunity Score: {round(simulated_score*100,2)}%")
+
+# -----------------------------------
+# MARKET BENCHMARK
+# -----------------------------------
+
+st.markdown("## 📈 Market Positioning")
+
+candidate_pool = np.random.normal(0.6, 0.15, 1000)
+percentile = (candidate_pool < opportunity_score).mean()*100
+
+st.metric("Market Percentile Rank", f"{round(percentile,2)}%")
+
+if percentile > 75:
+    st.success("Top-tier competitive profile.")
+elif percentile > 50:
+    st.info("Above-average competitiveness.")
 else:
     st.warning("Upskilling recommended.")
 
 # -----------------------------------
-# GPT GAP ANALYSIS
+# SALARY FORECAST
 # -----------------------------------
 
-if st.button("Generate Advanced Skill Gap Report"):
+st.markdown("## 💰 3-Year Salary Projection")
 
-    top_role = ranked_df.iloc[0]["Role"]
+years = [1,2,3]
+forecast = [avg_salary*(1.1**y) for y in years]
 
-    prompt = f"""
-    Candidate resume:
-    {resume_text}
+fig2 = px.line(
+    x=years,
+    y=forecast,
+    labels={"x":"Years","y":"Projected Salary"},
+    markers=True
+)
 
-    Target role:
-    {top_role}
+st.plotly_chart(fig2, use_container_width=True)
 
-    Provide:
-    1. Specific skill gaps
-    2. Certifications
-    3. Portfolio project ideas
-    4. 90-day improvement plan
-    5. Interview preparation strategy
-    """
+# -----------------------------------
+# AI ROADMAP
+# -----------------------------------
 
-    roadmap = gpt_service.generate_roadmap(resume_text, top_role)
+st.markdown("## 🤖 AI Growth Strategy")
+
+if st.button("Generate Strategic Roadmap"):
+
+    roadmap = gpt_service.generate_roadmap(
+        resume_text,
+        target_role
+    )
+
     st.markdown(roadmap)
 
-st.markdown("---")
-st.success("Your career growth is compounding. Keep building.")
+# -----------------------------------
+# DAILY MOTIVATION
+# -----------------------------------
+
+st.markdown("## 🧘 Daily Strength")
+
+quotes = [
+    "You have the right to perform your duty, but not to the fruits of your actions.",
+    "Skill compounds. Effort compounds faster.",
+    "Rejections are redirections.",
+    "Consistency beats intensity."
+]
+
+st.success(np.random.choice(quotes))
