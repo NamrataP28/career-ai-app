@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 
 from services.resume_scoring_engine import compute_resume_match
 from services.skill_engine import compute_skill_gap
@@ -11,11 +12,10 @@ from services.ranking_engine import calculate_opportunity
 
 
 # --------------------------------------------------
-# INLINE COUNTRY ATTRACTIVENESS (avoid import error)
+# Country Attractiveness
 # --------------------------------------------------
 
 def country_attractiveness(country):
-
     index = {
         "USA": 90,
         "Germany": 85,
@@ -25,50 +25,40 @@ def country_attractiveness(country):
         "Australia": 83,
         "India": 70
     }
-
     return index.get(country, 75)
 
 
 # --------------------------------------------------
-# SESSION VALIDATION
+# Validation
 # --------------------------------------------------
 
 if "user_inputs" not in st.session_state:
-    st.warning("Please complete Questionnaire first.")
+    st.warning("Complete Questionnaire first.")
     st.stop()
 
 inputs = st.session_state["user_inputs"]
-
 role = inputs["role"]
 countries = inputs["country"]
 resume_text = st.session_state.get("resume_text", "")
 currency = inputs["currency"]
+current_salary = inputs["salary"]
 
 if not countries:
-    st.warning("Please select at least one country.")
+    st.warning("Select at least one country.")
     st.stop()
 
 
 # --------------------------------------------------
-# FETCH + CALCULATE
+# Calculate Metrics
 # --------------------------------------------------
 
-country_results = []
+results = []
 
 for c in countries:
 
-    try:
-        demand, jobs, companies = fetch_live_demand(role, c)
-        supply = estimate_supply(role, c)
-        avg_salary = extract_salary(jobs)
-    except:
-        continue
-
-    if jobs is None:
-        jobs = []
-
-    if companies is None:
-        companies = []
+    demand, jobs, companies = fetch_live_demand(role, c)
+    supply = estimate_supply(role, c)
+    avg_salary = extract_salary(jobs)
 
     resume_score = compute_resume_match(resume_text, role, jobs)
     skill_score, missing_skills = compute_skill_gap(resume_text, jobs)
@@ -83,37 +73,21 @@ for c in countries:
         country_index
     )
 
-    probability = interview_probability(
-        resume_score,
-        tightness,
-        skill_score
-    )
+    probability = interview_probability(resume_score, tightness, skill_score)
 
-    country_results.append({
+    results.append({
         "Country": c,
         "Opportunity": round(opp_score, 2),
         "Probability": round(probability, 2),
         "Resume Score": round(resume_score, 2),
         "Skill Score": round(skill_score, 2),
         "Tightness": round(tightness, 2),
-        "Demand": demand,
-        "Supply": supply,
         "Salary": round(avg_salary, 2),
         "Companies": companies,
         "Missing Skills": missing_skills
     })
 
-
-df = pd.DataFrame(country_results)
-
-if df.empty:
-    st.warning("No market data available.")
-    st.stop()
-
-
-# --------------------------------------------------
-# GLOBAL RANKING
-# --------------------------------------------------
+df = pd.DataFrame(results)
 
 df["Composite Score"] = (
     df["Opportunity"] * 0.5 +
@@ -121,24 +95,17 @@ df["Composite Score"] = (
     df["Resume Score"] * 0.2
 ).round(2)
 
-df = df.sort_values("Composite Score", ascending=False).reset_index(drop=True)
-
-df["Market Percentile"] = (
-    df["Composite Score"].rank(pct=True) * 100
-).round(2)
+df = df.sort_values("Composite Score", ascending=False)
+df["Market Percentile"] = (df["Composite Score"].rank(pct=True) * 100).round(2)
 
 
 # --------------------------------------------------
-# COUNTRY SELECTOR (Clean UX)
+# Country Selector
 # --------------------------------------------------
 
-st.subheader("🌍 Ranked Countries")
+st.subheader("🌍 Global Ranking")
 
-selected_country = st.selectbox(
-    "Select Country for Detailed Analysis",
-    df["Country"]
-)
-
+selected_country = st.selectbox("Select Country", df["Country"])
 row = df[df["Country"] == selected_country].iloc[0]
 
 
@@ -146,106 +113,128 @@ row = df[df["Country"] == selected_country].iloc[0]
 # TABS
 # --------------------------------------------------
 
-tabs = st.tabs([
-    "Overview",
-    "Market Depth",
-    "Skill Gap",
-    "Companies",
-    "Competitiveness",
-    "Benchmark"
+tab1, tab2, tab3, tab4 = st.tabs([
+    "Executive Overview",
+    "Visual Intelligence",
+    "Skill Strategy",
+    "Growth Projection"
 ])
 
 
-# --------------------------------------------------
-# OVERVIEW
-# --------------------------------------------------
+# ==================================================
+# TAB 1 — EXECUTIVE OVERVIEW
+# ==================================================
 
-with tabs[0]:
+with tab1:
 
     col1, col2, col3 = st.columns(3)
 
-    col1.metric("Opportunity Score",
-                f"{row['Opportunity']:.2f}")
+    col1.metric("Opportunity Score", f"{row['Opportunity']:.2f}")
+    col2.metric("Interview Probability %", f"{row['Probability']:.2f}")
+    col3.metric("Market Percentile %", f"{row['Market Percentile']:.2f}")
 
-    col2.metric("Interview Probability %",
-                f"{row['Probability']:.2f}")
+    st.markdown("---")
 
-    col3.metric("Market Percentile %",
-                f"{row['Market Percentile']:.2f}")
+    salary_gap = row["Salary"] - current_salary
+    salary_gap_pct = (salary_gap / current_salary * 100) if current_salary > 0 else 0
 
+    st.subheader("💰 Salary Benchmark")
 
-# --------------------------------------------------
-# MARKET DEPTH
-# --------------------------------------------------
-
-with tabs[1]:
-
-    st.write(f"Live Demand: {row['Demand']}")
-    st.write(f"Estimated Supply: {row['Supply']}")
-    st.write(f"Market Tightness: {row['Tightness']:.2f}%")
-    st.write(f"Average Salary: {row['Salary']:.2f} {currency}")
+    colA, colB = st.columns(2)
+    colA.metric("Market Average Salary",
+                f"{row['Salary']:.2f} {currency}")
+    colB.metric("Salary Gap %",
+                f"{salary_gap_pct:.2f}%")
 
 
-# --------------------------------------------------
-# SKILL GAP
-# --------------------------------------------------
+# ==================================================
+# TAB 2 — VISUAL INTELLIGENCE
+# ==================================================
 
-with tabs[2]:
+with tab2:
+
+    # Gauge Chart
+    fig = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=row["Probability"],
+        title={"text": "Interview Probability %"},
+        gauge={
+            "axis": {"range": [0, 100]},
+            "bar": {"color": "#4CAF50"}
+        }
+    ))
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Radar Chart
+    categories = ["Resume", "Skill", "Market Tightness", "Opportunity"]
+
+    radar = go.Figure()
+
+    radar.add_trace(go.Scatterpolar(
+        r=[
+            row["Resume Score"],
+            row["Skill Score"],
+            row["Tightness"],
+            row["Opportunity"]
+        ],
+        theta=categories,
+        fill='toself'
+    ))
+
+    radar.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, 100])),
+        showlegend=False
+    )
+
+    st.plotly_chart(radar, use_container_width=True)
+
+
+# ==================================================
+# TAB 3 — SKILL STRATEGY
+# ==================================================
+
+with tab3:
 
     st.metric("Skill Alignment %",
               f"{row['Skill Score']:.2f}")
 
-    st.write("Missing High-Impact Skills:")
+    st.subheader("Missing High-Impact Skills")
 
     if row["Missing Skills"]:
         for skill in row["Missing Skills"]:
-            st.write("-", skill)
+            st.write("•", skill)
     else:
-        st.success("No major skill gaps detected.")
+        st.success("No major gaps detected.")
+
+    st.markdown("---")
+
+    st.subheader("Top Hiring Companies")
+
+    for comp in row["Companies"]:
+        st.write("•", comp)
 
 
-# --------------------------------------------------
-# COMPANIES
-# --------------------------------------------------
+# ==================================================
+# TAB 4 — GROWTH PROJECTION
+# ==================================================
 
-with tabs[3]:
+with tab4:
 
-    if row["Companies"]:
-        for comp in row["Companies"]:
-            st.write("•", comp)
-    else:
-        st.write("No company data available.")
+    st.subheader("📈 Career Growth Simulation")
 
+    years = st.slider("Projection Years", 1, 5, 3)
 
-# --------------------------------------------------
-# COMPETITIVENESS
-# --------------------------------------------------
+    projected_salary = row["Salary"] * (1 + 0.08) ** years
 
-with tabs[4]:
-
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric("Resume Strength %",
-                f"{row['Resume Score']:.2f}")
-
-    col2.metric("Market Tightness %",
-                f"{row['Tightness']:.2f}")
-
-    col3.metric("Interview Probability %",
-                f"{row['Probability']:.2f}")
-
-
-# --------------------------------------------------
-# BENCHMARK
-# --------------------------------------------------
-
-with tabs[5]:
-
-    st.metric("Global Market Percentile",
-              f"{row['Market Percentile']:.2f}")
-
-    st.write(
-        f"You outperform approximately "
-        f"{row['Market Percentile']:.2f}% of candidates "
-        f"in {row['Country']}."
+    st.metric(
+        f"Projected Salary in {years} years",
+        f"{projected_salary:.2f} {currency}"
     )
+
+    st.markdown("""
+    **Strategic Advice:**
+    - Improve 1 high-impact skill every 60 days  
+    - Target companies with higher tightness ratio  
+    - Negotiate based on percentile strength  
+    """)
