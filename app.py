@@ -36,7 +36,7 @@ resume_text = parser.extract_text(file)
 resume_embedding = model.encode(resume_text)
 
 # -----------------------------------
-# GLOBAL ROLE BANK
+# GLOBAL ROLE BANK (Corporate Only)
 # -----------------------------------
 
 def get_global_role_bank():
@@ -50,7 +50,9 @@ def get_global_role_bank():
         "Operations Manager","Program Manager",
         "Software Engineer","Backend Engineer",
         "Machine Learning Engineer","Data Engineer",
-        "Head of Analytics","Director of Strategy"
+        "Head of Analytics","Director of Strategy",
+        "Supply Chain Manager","Commercial Manager",
+        "Corporate Strategy Manager","FP&A Analyst"
     ]
 
 # -----------------------------------
@@ -99,7 +101,7 @@ ppp_index = {
 }
 
 # -----------------------------------
-# FETCH LIVE ROLES (DEBUG ENABLED)
+# FETCH LIVE ROLES (RapidAPI JSearch)
 # -----------------------------------
 
 @st.cache_data(ttl=1800)
@@ -107,54 +109,52 @@ def fetch_live_roles(top_roles):
 
     all_roles = []
 
-    for country_name, code in countries.items():
+    headers = {
+        "X-RapidAPI-Key": st.secrets["RAPIDAPI_KEY"],
+        "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
+    }
+
+    for country_name, country_code in countries.items():
 
         for role in top_roles:
 
-            url = f"https://api.adzuna.com/v1/api/jobs/{code}/search/1"
+            url = "https://jsearch.p.rapidapi.com/search"
 
             params = {
-                "app_id": st.secrets["ADZUNA_APP_ID"],
-                "app_key": st.secrets["ADZUNA_APP_KEY"],
-                "results_per_page": 10,
-                "what": role
+                "query": role,
+                "page": "1",
+                "num_pages": "1",
+                "country": country_code
             }
 
             try:
-                response = requests.get(url, params=params)
-
-                st.write(f"Calling API → {country_name} | {role}")
-                st.write("Status Code:", response.status_code)
+                response = requests.get(url, headers=headers, params=params)
 
                 if response.status_code != 200:
-                    st.error(response.text)
                     continue
 
                 data = response.json()
+                jobs = data.get("data", [])
 
-                total_demand = data.get("count", 0)
+                for job in jobs:
 
-                for job in data.get("results", []):
+                    salary = job.get("job_salary")
+                    salary_ppp = 0
 
-                    salary_min = job.get("salary_min") or 0
-                    salary_max = job.get("salary_max") or 0
-                    avg_salary = (salary_min + salary_max)/2 if salary_max else salary_min
-                    salary_ppp = avg_salary / ppp_index.get(country_name,1) if avg_salary else 0
+                    if salary and isinstance(salary, (int, float)):
+                        salary_ppp = salary / ppp_index.get(country_name, 1)
 
                     all_roles.append({
-                        "Role": job.get("title"),
+                        "Role": job.get("job_title"),
                         "Country": country_name,
-                        "Demand": total_demand,
+                        "Demand": len(jobs),
                         "Salary_PPP": salary_ppp
                     })
 
-            except Exception as e:
-                st.error(f"Exception in {country_name} - {role}: {e}")
+            except:
                 continue
 
     df = pd.DataFrame(all_roles)
-
-    st.write("Total roles fetched:", df.shape)
 
     if df.empty:
         return df
@@ -162,17 +162,17 @@ def fetch_live_roles(top_roles):
     return df.drop_duplicates(subset=["Role","Country"])
 
 # -----------------------------------
-# CALL FETCH
+# FETCH DATA
 # -----------------------------------
 
 roles_df = fetch_live_roles(top_roles)
 
 if roles_df.empty:
-    st.warning("No live corporate roles found.")
+    st.warning("No live corporate roles found. Check RapidAPI key.")
     st.stop()
 
 # -----------------------------------
-# SCORING
+# GLOBAL SCORING
 # -----------------------------------
 
 results = []
@@ -187,7 +187,7 @@ for _, row in roles_df.iterrows():
 
     visa_score = visa_model.visa_score(row["Country"])
     demand_norm = row["Demand"]/max_demand
-    salary_norm = row["Salary_PPP"]/max_salary
+    salary_norm = row["Salary_PPP"]/max_salary if max_salary else 0
 
     final_score = (
         0.5*similarity +
@@ -208,15 +208,30 @@ for _, row in roles_df.iterrows():
 
 ranked_df = pd.DataFrame(results).sort_values("Global Score %",ascending=False)
 
+# -----------------------------------
+# COUNTRY FILTER
+# -----------------------------------
+
 st.subheader("🌍 Global Opportunity Ranking")
-st.dataframe(ranked_df.head(20),use_container_width=True)
+
+country_filter = st.selectbox(
+    "Filter by Country",
+    ["Worldwide"] + list(ranked_df["Country"].unique())
+)
+
+if country_filter == "Worldwide":
+    display_df = ranked_df
+else:
+    display_df = ranked_df[ranked_df["Country"] == country_filter]
+
+st.dataframe(display_df.head(20),use_container_width=True)
 
 # -----------------------------------
-# VISUAL
+# VISUALIZATION
 # -----------------------------------
 
 fig = px.bar(
-    ranked_df.head(10),
+    display_df.head(10),
     x="Global Score %",
     y="Role",
     color="Country",
@@ -231,7 +246,7 @@ st.plotly_chart(fig,use_container_width=True)
 # GPT ROADMAP
 # -----------------------------------
 
-if st.button("Generate Roadmap"):
+if st.button("Generate Career Roadmap for Top Role"):
     top_role = ranked_df.iloc[0]["Role"]
     roadmap = gpt_service.generate_roadmap(resume_text, top_role)
     st.markdown(roadmap)
