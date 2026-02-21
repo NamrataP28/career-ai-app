@@ -1,7 +1,7 @@
 import streamlit as st
 import plotly.express as px
 import pandas as pd
-import requests
+import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from services.resume_parser import ResumeParser
@@ -13,7 +13,7 @@ from services.gpt_service import GPTService
 # -----------------------------------
 
 st.set_page_config(layout="wide")
-st.title("🚀 AI Career Intelligence Platform — India Live")
+st.title("🚀 AI Career Intelligence Engine — Global")
 
 # -----------------------------------
 # INITIALIZE SERVICES
@@ -36,154 +36,170 @@ resume_text = parser.extract_text(file)
 resume_embedding = model.encode(resume_text)
 
 # -----------------------------------
-# CORPORATE ROLE BANK
+# GLOBAL CORPORATE ROLE BANK
 # -----------------------------------
 
-corporate_keywords = [
-    "Data Analyst",
-    "Business Analyst",
-    "Product Manager",
-    "Marketing Manager",
-    "Financial Analyst",
-    "Risk Analyst",
-    "Operations Manager",
-    "Strategy Consultant",
-    "Software Engineer",
-    "Machine Learning Engineer",
-    "Program Manager",
-    "Finance Manager",
-    "Growth Manager",
-    "Corporate Strategy"
+role_bank = [
+    # Analytics
+    "Data Analyst","Business Analyst","Product Analyst",
+    "Marketing Analyst","Financial Analyst","Risk Analyst",
+    "FP&A Analyst","Analytics Manager",
+
+    # Product
+    "Product Manager","Growth Product Manager",
+    "Product Operations Manager","Head of Product",
+
+    # Marketing
+    "Marketing Manager","Growth Manager",
+    "Performance Marketing Manager",
+    "Digital Marketing Manager",
+
+    # Finance
+    "Finance Manager","Investment Analyst",
+    "Corporate Finance Manager","Strategy Finance Manager",
+
+    # Consulting
+    "Management Consultant","Strategy Consultant",
+    "Transformation Consultant",
+
+    # Operations
+    "Operations Manager","Program Manager",
+    "Supply Chain Manager",
+
+    # Tech
+    "Software Engineer","Backend Engineer",
+    "Machine Learning Engineer","Data Engineer",
+    "Engineering Manager",
+
+    # Leadership
+    "Director of Strategy","Head of Analytics",
+    "Chief Product Officer"
 ]
 
-st.subheader("🔎 Searching Corporate Roles in India")
+countries = [
+    "India",
+    "USA",
+    "UK",
+    "Canada",
+    "Germany",
+    "Singapore",
+    "Australia"
+]
 
 # -----------------------------------
-# FETCH LIVE INDIA ROLES
+# SIMULATED MARKET ENGINE (Stable)
 # -----------------------------------
 
-@st.cache_data(ttl=1800)
-def fetch_india_roles(keywords):
+def generate_market_data():
 
-    headers = {
-        "X-RapidAPI-Key": st.secrets["RAPIDAPI_KEY"],
-        "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
-    }
+    rows = []
 
-    all_roles = []
+    for role in role_bank:
+        for country in countries:
 
-    for keyword in keywords:
+            demand = np.random.randint(50, 500)
+            salary = np.random.randint(60000, 200000)
 
-        url = "https://jsearch.p.rapidapi.com/search"
-
-        params = {
-            "query": f"{keyword} India",
-            "page": "1",
-            "num_pages": "1",
-            "employment_types": "FULLTIME"
-        }
-
-        response = requests.get(url, headers=headers, params=params)
-
-        if response.status_code != 200:
-            continue
-
-        data = response.json()
-        jobs = data.get("data", [])
-
-        for job in jobs:
-
-            salary = job.get("job_salary") or 0
-
-            all_roles.append({
-                "Role": job.get("job_title"),
-                "Company": job.get("employer_name"),
-                "Location": job.get("job_city"),
-                "Salary": salary
+            rows.append({
+                "Role": role,
+                "Country": country,
+                "Market Demand": demand,
+                "Avg Salary": salary
             })
 
-    df = pd.DataFrame(all_roles)
+    return pd.DataFrame(rows)
 
-    if df.empty:
-        return df
-
-    return df.drop_duplicates(subset=["Role", "Company"])
-
-
-roles_df = fetch_india_roles(corporate_keywords)
-
-if roles_df.empty:
-    st.error("⚠ No live roles found. Check RapidAPI subscription.")
-    st.stop()
+market_df = generate_market_data()
 
 # -----------------------------------
-# RESUME-FIRST RANKING
+# RESUME-FIRST SCORING
 # -----------------------------------
 
 results = []
 
-max_salary = roles_df["Salary"].max() if roles_df["Salary"].max() > 0 else 1
+max_demand = market_df["Market Demand"].max()
+max_salary = market_df["Avg Salary"].max()
 
-for _, row in roles_df.iterrows():
+for _, row in market_df.iterrows():
 
-    job_embedding = model.encode(row["Role"])
+    role_embedding = model.encode(row["Role"])
 
     similarity = cosine_similarity(
         [resume_embedding],
-        [job_embedding]
+        [role_embedding]
     )[0][0]
 
-    salary_norm = row["Salary"] / max_salary if max_salary else 0
+    visa_score = visa_model.visa_score(row["Country"])
+    demand_norm = row["Market Demand"] / max_demand
+    salary_norm = row["Avg Salary"] / max_salary
 
     final_score = (
-        0.75 * similarity +
-        0.25 * salary_norm
+        0.55 * similarity +
+        0.20 * demand_norm +
+        0.15 * visa_score +
+        0.10 * salary_norm
     )
 
     results.append({
         "Role": row["Role"],
-        "Company": row["Company"],
-        "Location": row["Location"],
+        "Country": row["Country"],
         "Match %": round(similarity * 100, 2),
-        "Salary": row["Salary"],
-        "Opportunity Score %": round(final_score * 100, 2)
+        "Visa Score %": round(visa_score * 100, 2),
+        "Demand Index %": round(demand_norm * 100, 2),
+        "Salary Index %": round(salary_norm * 100, 2),
+        "Global Opportunity Score %": round(final_score * 100, 2)
     })
 
 ranked_df = pd.DataFrame(results).sort_values(
-    "Opportunity Score %",
+    "Global Opportunity Score %",
     ascending=False
 )
 
 # -----------------------------------
-# DISPLAY RESULTS
+# COUNTRY FILTER
 # -----------------------------------
 
-st.subheader("🇮🇳 India — Live Ranked Roles")
+st.subheader("🌍 Global Opportunity Ranking")
 
-st.dataframe(
-    ranked_df.head(20),
-    use_container_width=True
+country_filter = st.selectbox(
+    "Filter by Country",
+    ["Worldwide"] + countries
 )
 
+if country_filter == "Worldwide":
+    display_df = ranked_df
+else:
+    display_df = ranked_df[ranked_df["Country"] == country_filter]
+
+st.dataframe(display_df.head(20), use_container_width=True)
+
 # -----------------------------------
-# VISUALIZATION
+# INTERACTIVE VISUAL
 # -----------------------------------
 
 fig = px.bar(
-    ranked_df.head(10),
-    x="Opportunity Score %",
+    display_df.head(10),
+    x="Global Opportunity Score %",
     y="Role",
+    color="Country",
     orientation="h",
-    hover_data=["Match %", "Salary", "Company"],
-    height=450
+    hover_data=[
+        "Match %",
+        "Visa Score %",
+        "Demand Index %",
+        "Salary Index %"
+    ],
+    height=500
 )
 
-fig.update_layout(yaxis=dict(categoryorder="total ascending"))
+fig.update_layout(
+    yaxis=dict(categoryorder="total ascending")
+)
 
 st.plotly_chart(fig, use_container_width=True)
 
 # -----------------------------------
-# GPT ROADMAP
+# AI CAREER ROADMAP
 # -----------------------------------
 
 if st.button("Generate Career Roadmap for Top Role"):
@@ -196,3 +212,20 @@ if st.button("Generate Career Roadmap for Top Role"):
     )
 
     st.markdown(roadmap)
+
+# -----------------------------------
+# MOTIVATION BLOCK
+# -----------------------------------
+
+st.markdown("---")
+st.subheader("🧘 Daily Strength")
+
+quotes = [
+    "You have the right to perform your duty, but not to the fruits of your actions. — Bhagavad Gita",
+    "Focus on progress, not perfection.",
+    "Rejections are redirections.",
+    "Skill compounds. Effort compounds faster.",
+    "Your current level is not your ceiling."
+]
+
+st.success(np.random.choice(quotes))
