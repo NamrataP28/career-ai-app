@@ -7,4 +7,3 @@ openai
 pdfplumber
 scikit-learn
 numpy
-sqlalchemy
