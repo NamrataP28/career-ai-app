@@ -1,20 +1,12 @@
-from sklearn.metrics.pairwise import cosine_similarity
+def calculate_opportunity(resume_score, demand, supply, salary_growth):
 
-class RankingEngine:
+    tightness = (demand / supply) * 100 if supply > 0 else 0
 
-    def compute_score(self, resume_embedding, job_embedding,
-                      demand, salary_norm, visa_score):
+    opportunity = (
+        0.35 * resume_score +
+        0.30 * tightness +
+        0.20 * salary_growth +
+        0.15 * 70  # country attractiveness baseline
+    )
 
-        similarity = cosine_similarity(
-            [resume_embedding],
-            [job_embedding]
-        )[0][0]
-
-        score = (
-            0.5 * similarity +
-            0.2 * demand +
-            0.2 * salary_norm +
-            0.1 * visa_score
-        )
-
-        return similarity, score
+    return round(opportunity, 2), round(tightness, 2)
