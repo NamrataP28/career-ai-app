@@ -27,7 +27,10 @@ def init_db():
 def authenticate_user(email, password):
     conn = sqlite3.connect("career.db")
     c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE email=? AND password=?", (email, password))
+    c.execute(
+        "SELECT * FROM users WHERE email=? AND password=?",
+        (email, password)
+    )
     result = c.fetchone()
     conn.close()
     return result
@@ -35,6 +38,9 @@ def authenticate_user(email, password):
 def register_user(email, password):
     conn = sqlite3.connect("career.db")
     c = conn.cursor()
-    c.execute("INSERT OR IGNORE INTO users VALUES (?,?)", (email, password))
+    c.execute(
+        "INSERT OR IGNORE INTO users VALUES (?,?)",
+        (email, password)
+    )
     conn.commit()
     conn.close()
