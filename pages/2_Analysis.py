@@ -8,7 +8,25 @@ from services.demand_service import fetch_live_demand
 from services.supply_engine import estimate_supply
 from services.salary_service import extract_salary
 from services.ranking_engine import calculate_opportunity
-from services.country_index import country_attractiveness
+
+
+# --------------------------------------------------
+# INLINE COUNTRY ATTRACTIVENESS (avoid import error)
+# --------------------------------------------------
+
+def country_attractiveness(country):
+
+    index = {
+        "USA": 90,
+        "Germany": 85,
+        "UK": 88,
+        "Singapore": 80,
+        "Canada": 82,
+        "Australia": 83,
+        "India": 70
+    }
+
+    return index.get(country, 75)
 
 
 # --------------------------------------------------
@@ -32,36 +50,39 @@ if not countries:
 
 
 # --------------------------------------------------
-# FETCH + CALCULATE PER COUNTRY
+# FETCH + CALCULATE
 # --------------------------------------------------
 
 country_results = []
 
 for c in countries:
 
-    demand, jobs, companies = fetch_live_demand(role, c)
-    supply = estimate_supply(role, c)
-    avg_salary = extract_salary(jobs)
+    try:
+        demand, jobs, companies = fetch_live_demand(role, c)
+        supply = estimate_supply(role, c)
+        avg_salary = extract_salary(jobs)
+    except:
+        continue
 
-    # Resume match score (embedding-based)
+    if jobs is None:
+        jobs = []
+
+    if companies is None:
+        companies = []
+
     resume_score = compute_resume_match(resume_text, role, jobs)
-
-    # Skill gap
     skill_score, missing_skills = compute_skill_gap(resume_text, jobs)
 
-    # Country strength
     country_index = country_attractiveness(c)
 
-    # Opportunity + Tightness
     opp_score, tightness = calculate_opportunity(
         resume_score,
         demand,
         supply,
-        60,  # replace later with real salary growth model
+        60,
         country_index
     )
 
-    # Interview probability
     probability = interview_probability(
         resume_score,
         tightness,
@@ -83,32 +104,42 @@ for c in countries:
     })
 
 
-# --------------------------------------------------
-# GLOBAL RANKING MODEL
-# --------------------------------------------------
-
 df = pd.DataFrame(country_results)
 
 if df.empty:
-    st.warning("No live data found.")
+    st.warning("No market data available.")
     st.stop()
 
-# Composite global ranking
+
+# --------------------------------------------------
+# GLOBAL RANKING
+# --------------------------------------------------
+
 df["Composite Score"] = (
     df["Opportunity"] * 0.5 +
     df["Probability"] * 0.3 +
     df["Resume Score"] * 0.2
-)
+).round(2)
 
-df["Composite Score"] = df["Composite Score"].round(2)
-
-# Sort countries
 df = df.sort_values("Composite Score", ascending=False).reset_index(drop=True)
 
-# True percentile
 df["Market Percentile"] = (
     df["Composite Score"].rank(pct=True) * 100
 ).round(2)
+
+
+# --------------------------------------------------
+# COUNTRY SELECTOR (Clean UX)
+# --------------------------------------------------
+
+st.subheader("🌍 Ranked Countries")
+
+selected_country = st.selectbox(
+    "Select Country for Detailed Analysis",
+    df["Country"]
+)
+
+row = df[df["Country"] == selected_country].iloc[0]
 
 
 # --------------------------------------------------
@@ -126,91 +157,95 @@ tabs = st.tabs([
 
 
 # --------------------------------------------------
-# RENDER RESULTS
+# OVERVIEW
 # --------------------------------------------------
 
-for _, row in df.iterrows():
+with tabs[0]:
 
-    # ---------- OVERVIEW ----------
-    with tabs[0]:
-        st.subheader(f"{row['Country']} Overview")
+    col1, col2, col3 = st.columns(3)
 
-        col1, col2, col3 = st.columns(3)
+    col1.metric("Opportunity Score",
+                f"{row['Opportunity']:.2f}")
 
-        col1.metric("Opportunity Score",
-                    f"{row['Opportunity']:.2f}")
+    col2.metric("Interview Probability %",
+                f"{row['Probability']:.2f}")
 
-        col2.metric("Interview Probability %",
-                    f"{row['Probability']:.2f}")
-
-        col3.metric("Market Percentile %",
-                    f"{row['Market Percentile']:.2f}")
+    col3.metric("Market Percentile %",
+                f"{row['Market Percentile']:.2f}")
 
 
-    # ---------- MARKET DEPTH ----------
-    with tabs[1]:
-        st.subheader(f"{row['Country']} Market Depth")
+# --------------------------------------------------
+# MARKET DEPTH
+# --------------------------------------------------
 
-        st.write(f"Live Demand: {row['Demand']}")
-        st.write(f"Estimated Supply: {row['Supply']}")
-        st.write(f"Market Tightness: {row['Tightness']:.2f}%")
-        st.write(f"Average Salary: {row['Salary']:.2f} {currency}")
+with tabs[1]:
 
-
-    # ---------- SKILL GAP ----------
-    with tabs[2]:
-        st.subheader(f"{row['Country']} Skill Analysis")
-
-        st.metric("Skill Alignment %",
-                  f"{row['Skill Score']:.2f}")
-
-        st.write("Missing High-Impact Skills:")
-
-        if row["Missing Skills"]:
-            for skill in row["Missing Skills"]:
-                st.write("-", skill)
-        else:
-            st.success("No critical skill gaps detected.")
+    st.write(f"Live Demand: {row['Demand']}")
+    st.write(f"Estimated Supply: {row['Supply']}")
+    st.write(f"Market Tightness: {row['Tightness']:.2f}%")
+    st.write(f"Average Salary: {row['Salary']:.2f} {currency}")
 
 
-    # ---------- COMPANIES ----------
-    with tabs[3]:
-        st.subheader(f"{row['Country']} Top Hiring Companies")
+# --------------------------------------------------
+# SKILL GAP
+# --------------------------------------------------
 
-        if row["Companies"]:
-            for comp in row["Companies"]:
-                st.write("•", comp)
-        else:
-            st.write("No company data available.")
+with tabs[2]:
 
+    st.metric("Skill Alignment %",
+              f"{row['Skill Score']:.2f}")
 
-    # ---------- COMPETITIVENESS ----------
-    with tabs[4]:
-        st.subheader(f"{row['Country']} Competitiveness")
+    st.write("Missing High-Impact Skills:")
 
-        col1, col2, col3 = st.columns(3)
-
-        col1.metric("Resume Strength %",
-                    f"{row['Resume Score']:.2f}")
-
-        col2.metric("Market Tightness %",
-                    f"{row['Tightness']:.2f}")
-
-        col3.metric("Interview Probability %",
-                    f"{row['Probability']:.2f}")
+    if row["Missing Skills"]:
+        for skill in row["Missing Skills"]:
+            st.write("-", skill)
+    else:
+        st.success("No major skill gaps detected.")
 
 
-    # ---------- BENCHMARK ----------
-    with tabs[5]:
-        st.subheader(f"{row['Country']} Benchmark")
+# --------------------------------------------------
+# COMPANIES
+# --------------------------------------------------
 
-        st.metric("Global Market Percentile",
-                  f"{row['Market Percentile']:.2f}")
+with tabs[3]:
 
-        st.write(
-            f"You outperform approximately "
-            f"{row['Market Percentile']:.2f}% of candidates "
-            f"in {row['Country']}."
-        )
+    if row["Companies"]:
+        for comp in row["Companies"]:
+            st.write("•", comp)
+    else:
+        st.write("No company data available.")
 
-        st.markdown("---")
+
+# --------------------------------------------------
+# COMPETITIVENESS
+# --------------------------------------------------
+
+with tabs[4]:
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Resume Strength %",
+                f"{row['Resume Score']:.2f}")
+
+    col2.metric("Market Tightness %",
+                f"{row['Tightness']:.2f}")
+
+    col3.metric("Interview Probability %",
+                f"{row['Probability']:.2f}")
+
+
+# --------------------------------------------------
+# BENCHMARK
+# --------------------------------------------------
+
+with tabs[5]:
+
+    st.metric("Global Market Percentile",
+              f"{row['Market Percentile']:.2f}")
+
+    st.write(
+        f"You outperform approximately "
+        f"{row['Market Percentile']:.2f}% of candidates "
+        f"in {row['Country']}."
+    )
