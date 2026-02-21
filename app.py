@@ -13,7 +13,7 @@ from services.gpt_service import GPTService
 # -----------------------------------
 
 st.set_page_config(layout="wide")
-st.title("🚀 AI Career Intelligence Platform")
+st.title("🚀 AI Career Intelligence Platform — India Live")
 
 # -----------------------------------
 # INITIALIZE SERVICES
@@ -36,90 +36,48 @@ resume_text = parser.extract_text(file)
 resume_embedding = model.encode(resume_text)
 
 # -----------------------------------
-# GLOBAL ROLE BANK (Corporate)
+# CORPORATE ROLE BANK
 # -----------------------------------
 
-def get_global_role_bank():
-    return [
-        "Data Analyst","Business Analyst","Product Analyst",
-        "Marketing Analyst","Financial Analyst","Risk Analyst",
-        "Finance Manager","Investment Analyst",
-        "Product Manager","Growth Product Manager",
-        "Strategy Consultant","Management Consultant",
-        "Marketing Manager","Digital Marketing Manager",
-        "Operations Manager","Program Manager",
-        "Software Engineer","Backend Engineer",
-        "Machine Learning Engineer","Data Engineer",
-        "Head of Analytics","Director of Strategy",
-        "Supply Chain Manager","Commercial Manager",
-        "Corporate Strategy Manager","FP&A Analyst"
-    ]
-
-# -----------------------------------
-# DETECT TOP MATCHING ROLES
-# -----------------------------------
-
-def detect_top_roles(resume_embedding, top_n=5):
-    role_bank = get_global_role_bank()
-    scored = []
-
-    for role in role_bank:
-        role_emb = model.encode(role)
-        score = cosine_similarity([resume_embedding],[role_emb])[0][0]
-        scored.append((role, score))
-
-    scored.sort(key=lambda x: x[1], reverse=True)
-    return [r[0] for r in scored[:top_n]]
-
-top_roles = detect_top_roles(resume_embedding)
-
-st.subheader("🔎 Top Resume-Matched Role Categories")
-st.write(top_roles)
-
-# -----------------------------------
-# COUNTRY MAP
-# -----------------------------------
-
-countries = [
-    "USA",
-    "UK",
-    "Canada",
-    "Germany",
-    "India",
-    "Singapore",
-    "Australia"
+corporate_keywords = [
+    "Data Analyst",
+    "Business Analyst",
+    "Product Manager",
+    "Marketing Manager",
+    "Financial Analyst",
+    "Risk Analyst",
+    "Operations Manager",
+    "Strategy Consultant",
+    "Software Engineer",
+    "Machine Learning Engineer",
+    "Program Manager",
+    "Finance Manager",
+    "Growth Manager",
+    "Corporate Strategy"
 ]
 
-ppp_index = {
-    "USA":1.0,
-    "UK":1.0,
-    "Canada":0.9,
-    "Germany":0.95,
-    "India":0.35,
-    "Singapore":1.1,
-    "Australia":0.95
-}
+st.subheader("🔎 Searching Corporate Roles in India")
 
 # -----------------------------------
-# FETCH LIVE ROLES (FIXED QUERY)
+# FETCH LIVE INDIA ROLES
 # -----------------------------------
 
 @st.cache_data(ttl=1800)
-def fetch_live_roles(top_roles):
-
-    all_roles = []
+def fetch_india_roles(keywords):
 
     headers = {
         "X-RapidAPI-Key": st.secrets["RAPIDAPI_KEY"],
         "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
     }
 
-    for role in top_roles:
+    all_roles = []
+
+    for keyword in keywords:
 
         url = "https://jsearch.p.rapidapi.com/search"
 
         params = {
-            "query": role,
+            "query": f"{keyword} India",
             "page": "1",
             "num_pages": "1",
             "employment_types": "FULLTIME"
@@ -135,22 +93,13 @@ def fetch_live_roles(top_roles):
 
         for job in jobs:
 
-            country_name = job.get("job_country")
-
-            if not country_name:
-                continue
-
-            salary = job.get("job_salary")
-            salary_ppp = 0
-
-            if salary and isinstance(salary, (int, float)):
-                salary_ppp = salary
+            salary = job.get("job_salary") or 0
 
             all_roles.append({
                 "Role": job.get("job_title"),
-                "Country": country_name,
-                "Demand": len(jobs),
-                "Salary_PPP": salary_ppp
+                "Company": job.get("employer_name"),
+                "Location": job.get("job_city"),
+                "Salary": salary
             })
 
     df = pd.DataFrame(all_roles)
@@ -158,94 +107,92 @@ def fetch_live_roles(top_roles):
     if df.empty:
         return df
 
-    return df.drop_duplicates(subset=["Role","Country"])
+    return df.drop_duplicates(subset=["Role", "Company"])
 
-# -----------------------------------
-# FETCH DATA
-# -----------------------------------
 
-roles_df = fetch_live_roles(top_roles)
+roles_df = fetch_india_roles(corporate_keywords)
 
 if roles_df.empty:
-    st.warning("No live corporate roles found.")
+    st.error("⚠ No live roles found. Check RapidAPI subscription.")
     st.stop()
 
 # -----------------------------------
-# GLOBAL SCORING
+# RESUME-FIRST RANKING
 # -----------------------------------
 
 results = []
 
-max_demand = roles_df["Demand"].max() or 1
-max_salary = roles_df["Salary_PPP"].max() or 1
+max_salary = roles_df["Salary"].max() if roles_df["Salary"].max() > 0 else 1
 
 for _, row in roles_df.iterrows():
 
     job_embedding = model.encode(row["Role"])
-    similarity = cosine_similarity([resume_embedding],[job_embedding])[0][0]
 
-    visa_score = visa_model.visa_score(row["Country"])
-    demand_norm = row["Demand"]/max_demand
-    salary_norm = row["Salary_PPP"]/max_salary if max_salary else 0
+    similarity = cosine_similarity(
+        [resume_embedding],
+        [job_embedding]
+    )[0][0]
+
+    salary_norm = row["Salary"] / max_salary if max_salary else 0
 
     final_score = (
-        0.5*similarity +
-        0.25*demand_norm +
-        0.15*visa_score +
-        0.10*salary_norm
+        0.75 * similarity +
+        0.25 * salary_norm
     )
 
     results.append({
-        "Role":row["Role"],
-        "Country":row["Country"],
-        "Match %":round(similarity*100,2),
-        "Visa Score %":round(visa_score*100,2),
-        "Market Demand %":round(demand_norm*100,2),
-        "PPP Salary Index %":round(salary_norm*100,2),
-        "Global Score %":round(final_score*100,2)
+        "Role": row["Role"],
+        "Company": row["Company"],
+        "Location": row["Location"],
+        "Match %": round(similarity * 100, 2),
+        "Salary": row["Salary"],
+        "Opportunity Score %": round(final_score * 100, 2)
     })
 
-ranked_df = pd.DataFrame(results).sort_values("Global Score %",ascending=False)
-
-# -----------------------------------
-# COUNTRY FILTER
-# -----------------------------------
-
-st.subheader("🌍 Global Opportunity Ranking")
-
-country_filter = st.selectbox(
-    "Filter by Country",
-    ["Worldwide"] + list(ranked_df["Country"].unique())
+ranked_df = pd.DataFrame(results).sort_values(
+    "Opportunity Score %",
+    ascending=False
 )
 
-if country_filter == "Worldwide":
-    display_df = ranked_df
-else:
-    display_df = ranked_df[ranked_df["Country"] == country_filter]
+# -----------------------------------
+# DISPLAY RESULTS
+# -----------------------------------
 
-st.dataframe(display_df.head(20),use_container_width=True)
+st.subheader("🇮🇳 India — Live Ranked Roles")
+
+st.dataframe(
+    ranked_df.head(20),
+    use_container_width=True
+)
 
 # -----------------------------------
 # VISUALIZATION
 # -----------------------------------
 
 fig = px.bar(
-    display_df.head(10),
-    x="Global Score %",
+    ranked_df.head(10),
+    x="Opportunity Score %",
     y="Role",
-    color="Country",
     orientation="h",
-    hover_data=["Match %","Visa Score %","Market Demand %"],
-    height=500
+    hover_data=["Match %", "Salary", "Company"],
+    height=450
 )
 
-st.plotly_chart(fig,use_container_width=True)
+fig.update_layout(yaxis=dict(categoryorder="total ascending"))
+
+st.plotly_chart(fig, use_container_width=True)
 
 # -----------------------------------
 # GPT ROADMAP
 # -----------------------------------
 
 if st.button("Generate Career Roadmap for Top Role"):
+
     top_role = ranked_df.iloc[0]["Role"]
-    roadmap = gpt_service.generate_roadmap(resume_text, top_role)
+
+    roadmap = gpt_service.generate_roadmap(
+        resume_text,
+        top_role
+    )
+
     st.markdown(roadmap)
