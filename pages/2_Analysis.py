@@ -1,4 +1,5 @@
 import streamlit as st
+from services.resume_scoring_engine import compute_resume_match
 from services.skill_engine import compute_skill_gap
 from services.probability_engine import interview_probability
 from services.benchmark_engine import percentile_rank
@@ -40,7 +41,11 @@ for c in countries:
     supply = estimate_supply(role, c)
     avg_salary = extract_salary(jobs)
 
-    resume_score = 75  # replace with embedding similarity
+    resume_score = compute_resume_match(
+    resume_text,
+    role,
+    jobs
+) # replace with embedding similarity
 
     skill_score, missing_skills = compute_skill_gap(resume_text, jobs)
 
