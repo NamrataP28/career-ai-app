@@ -1,22 +1,27 @@
 import requests
-import os
-from dotenv import load_dotenv
+import streamlit as st
 
-load_dotenv()
+def fetch_live_demand(role, country):
+    headers = {
+        "X-RapidAPI-Key": st.secrets["RAPIDAPI_KEY"],
+        "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
+    }
 
-class DemandService:
+    url = "https://jsearch.p.rapidapi.com/search"
 
-    def get_live_demand(self, role, country="gb"):
-        url = f"https://api.adzuna.com/v1/api/jobs/{country}/search/1"
-        params = {
-            "app_id": os.getenv("ADZUNA_APP_ID"),
-            "app_key": os.getenv("ADZUNA_APP_KEY"),
-            "results_per_page": 1,
-            "what": role
-        }
-        try:
-            response = requests.get(url, params=params)
-            data = response.json()
-            return data.get("count", 0)
-        except:
-            return 0
+    params = {
+        "query": role,
+        "page": "1",
+        "num_pages": "1",
+        "country": country.lower()
+    }
+
+    response = requests.get(url, headers=headers, params=params)
+
+    if response.status_code != 200:
+        return 0, []
+
+    data = response.json()
+    jobs = data.get("data", [])
+
+    return len(jobs), jobs
