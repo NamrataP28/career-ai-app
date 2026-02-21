@@ -1,5 +1,5 @@
 from services.skill_engine import compute_skill_gap
-from services.probability_engine import interview_probability
+from services.probabilty_engine import probabilty_engine
 from services.benchmark_engine import percentile_rank
 
 role = inputs["role"]
