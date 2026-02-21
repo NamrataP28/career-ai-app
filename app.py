@@ -114,45 +114,44 @@ def fetch_live_roles(top_roles):
         "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
     }
 
-    for country_name in countries:
+    for role in top_roles:
 
-        for role in top_roles:
+        url = "https://jsearch.p.rapidapi.com/search"
 
-            url = "https://jsearch.p.rapidapi.com/search"
+        params = {
+            "query": role,
+            "page": "1",
+            "num_pages": "1",
+            "employment_types": "FULLTIME"
+        }
 
-            # ✅ FIX: Embed location into query
-            params = {
-                "query": f"{role} jobs in {country_name}",
-                "page": "1",
-                "num_pages": "1"
-            }
+        response = requests.get(url, headers=headers, params=params)
 
-            try:
-                response = requests.get(url, headers=headers, params=params)
+        if response.status_code != 200:
+            continue
 
-                if response.status_code != 200:
-                    continue
+        data = response.json()
+        jobs = data.get("data", [])
 
-                data = response.json()
-                jobs = data.get("data", [])
+        for job in jobs:
 
-                for job in jobs:
+            country_name = job.get("job_country")
 
-                    salary = job.get("job_salary")
-                    salary_ppp = 0
-
-                    if salary and isinstance(salary, (int, float)):
-                        salary_ppp = salary / ppp_index.get(country_name, 1)
-
-                    all_roles.append({
-                        "Role": job.get("job_title"),
-                        "Country": country_name,
-                        "Demand": len(jobs),
-                        "Salary_PPP": salary_ppp
-                    })
-
-            except:
+            if not country_name:
                 continue
+
+            salary = job.get("job_salary")
+            salary_ppp = 0
+
+            if salary and isinstance(salary, (int, float)):
+                salary_ppp = salary
+
+            all_roles.append({
+                "Role": job.get("job_title"),
+                "Country": country_name,
+                "Demand": len(jobs),
+                "Salary_PPP": salary_ppp
+            })
 
     df = pd.DataFrame(all_roles)
 
