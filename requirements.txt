@@ -1,7 +1,6 @@
 streamlit
 sentence-transformers
-scikit-learn
-requests
 plotly
 openai
-pdfplumber
+requests
+pandas
