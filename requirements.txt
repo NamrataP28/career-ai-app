@@ -1,6 +1,9 @@
 streamlit
 sentence-transformers
 plotly
-openai
-requests
 pandas
+requests
+openai
+pdfplumber
+scikit-learn
+numpy
