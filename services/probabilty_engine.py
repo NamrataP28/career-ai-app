@@ -6,4 +6,4 @@ def interview_probability(resume_score, tightness, skill_score):
         0.25 * skill_score
     )
 
-    return round(min(probability, 95),2)
+    return round(min(probability, 95), 2)
