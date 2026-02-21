@@ -34,7 +34,7 @@ for c in countries:
         60
     )
 
-    probability = interview_probability(resume_score, tightness, skill_score)
+    probability = interview_probabilty(resume_score, tightness, skill_score)
     percentile = percentile_rank(opp_score)
 
     # -------- OVERVIEW --------
