@@ -1,48 +1,58 @@
 import streamlit as st
-import sqlite3
-from database.db import init_db, authenticate_user, register_user
+from database.db import init_db
 
-st.set_page_config(page_title="Career Intelligence", layout="wide")
-
+# ------------------ INIT ------------------
 init_db()
+st.set_page_config(layout="wide")
+
+# ------------------ THEME ------------------
+st.markdown("""
+<style>
+html, body, [class*="css"]  {
+    font-family: 'Roboto', sans-serif;
+}
+
+.main {
+    background: linear-gradient(135deg, #6A11CB 0%, #2575FC 100%);
+}
+
+.block-container {
+    padding-top: 2rem;
+}
+
+.card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 16px;
+    box-shadow: 0px 10px 30px rgba(0,0,0,0.1);
+}
+
+.metric-card {
+    background: white;
+    padding: 1rem;
+    border-radius: 12px;
+    text-align: center;
+    box-shadow: 0px 5px 20px rgba(0,0,0,0.08);
+}
+
+.gold {
+    color: #F7B500;
+    font-weight: bold;
+}
+</style>
+""", unsafe_allow_html=True)
+
+# ------------------ LANDING ------------------
+st.title("🚀 Career Intelligence Platform")
 
 st.markdown("""
-# 🚀 Career Intelligence Platform
+<div class="card">
+<h3>Understand Your Market Position Like 6-Figure Leaders</h3>
+<p>
+We analyze your resume against global job demand, supply competitiveness,
+salary benchmarks, and skill gaps to show your real-world standing.
+</p>
+</div>
+""", unsafe_allow_html=True)
 
-### Your Global Career Positioning Engine
-
-We combine:
-
-• Resume intelligence  
-• Market demand modeling  
-• Supply vs demand analysis  
-• Salary forecasting  
-• Visa feasibility  
-• Interview probability  
-
-To show you exactly where you stand in the global market.
-
----
-
-""")
-
-col1, col2 = st.columns([2,1])
-
-with col2:
-    st.subheader("Login")
-
-    email = st.text_input("Email")
-    password = st.text_input("Password", type="password")
-
-    if st.button("Login"):
-        if authenticate_user(email, password):
-            st.session_state["user"] = email
-            st.success("Logged in successfully.")
-            st.switch_page("pages/1_Questionnaire.py")
-        else:
-            st.error("Invalid credentials")
-
-    st.markdown("### New User?")
-    if st.button("Register"):
-        register_user(email, password)
-        st.success("Registered successfully.")
+st.info("Use the sidebar to start with Questionnaire → then move to Analysis.")
