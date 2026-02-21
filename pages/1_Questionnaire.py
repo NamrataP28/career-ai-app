@@ -1,20 +1,39 @@
 import streamlit as st
+from services.role_taxonomy import get_role_universe
 
 st.title("Step 1: Career Questionnaire")
 
-role = st.selectbox("Target Role",
-    ["Data Analyst","Product Manager","Marketing Manager",
-     "Financial Analyst","Strategy Consultant","Software Engineer"]
-)
+roles = get_role_universe()
 
-country = st.selectbox("Target Country",
-    ["USA","UK","Canada","Germany","India","Singapore","Australia"]
-)
+col1, col2 = st.columns(2)
 
-current_salary = st.number_input("Current Salary (USD)", min_value=0)
+with col1:
+    target_role = st.selectbox("Primary Target Role", roles)
+    alt_role = st.selectbox("Alternate Role Interest", roles)
+    experience = st.slider("Years of Experience", 0, 20, 3)
+
+with col2:
+    country = st.multiselect(
+        "Target Countries",
+        ["USA","UK","Germany","India","Singapore","Canada","Australia"]
+    )
+    currency = st.selectbox("Preferred Currency", ["USD","EUR","INR","GBP","SGD"])
+    career_goal = st.selectbox(
+        "Career Objective",
+        ["Salary Benchmark","Switch Role","Growth in Current Role",
+         "Return After Career Break","Resume Health Check"]
+    )
+
+current_salary = st.number_input("Current Salary", min_value=0)
 
 if st.button("Proceed to Analysis"):
-    st.session_state["role"] = role
-    st.session_state["country"] = country
-    st.session_state["salary"] = current_salary
-    st.switch_page("pages/2_Analysis.py")
+    st.session_state["user_inputs"] = {
+        "role": target_role,
+        "alt_role": alt_role,
+        "exp": experience,
+        "country": country,
+        "currency": currency,
+        "goal": career_goal,
+        "salary": current_salary
+    }
+    st.success("Saved! Go to Analysis tab.")
