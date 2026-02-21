@@ -1,10 +1,29 @@
+import streamlit as st
 from services.skill_engine import compute_skill_gap
 from services.probability_engine import interview_probability
 from services.benchmark_engine import percentile_rank
+from services.demand_service import fetch_live_demand
+from services.supply_engine import estimate_supply
+from services.salary_service import extract_salary
+from services.ranking_engine import calculate_opportunity
+
+# -----------------------------------
+# Session Validation
+# -----------------------------------
+
+if "user_inputs" not in st.session_state:
+    st.warning("Please complete Questionnaire first.")
+    st.stop()
+
+inputs = st.session_state["user_inputs"]
 
 role = inputs["role"]
 countries = inputs["country"]
-resume_text = st.session_state.get("resume_text")
+resume_text = st.session_state.get("resume_text", "")
+
+# -----------------------------------
+# Tabs
+# -----------------------------------
 
 tabs = st.tabs([
     "Overview",
