@@ -1,32 +1,52 @@
 from openai import OpenAI
-import os
-from dotenv import load_dotenv
+import streamlit as st
 
-load_dotenv()
-
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class GPTService:
+
+    def __init__(self):
+        # Use Streamlit secrets instead of dotenv
+        api_key = st.secrets.get("OPENAI_API_KEY")
+
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY not found in Streamlit secrets")
+
+        self.client = OpenAI(api_key=api_key)
 
     def generate_roadmap(self, resume_text, role):
 
         prompt = f"""
-        Resume:
-        {resume_text}
+You are a senior career strategist.
 
-        Target Role:
-        {role}
+Candidate Resume:
+{resume_text}
 
-        Provide:
-        - Skill gaps
-        - Certifications
-        - Project ideas
-        - 90-day roadmap
-        """
+Target Role:
+{role}
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}]
-        )
+Provide:
 
-        return response.choices[0].message.content
+1. Skill Gap Analysis (clear bullets)
+2. Recommended Certifications (role-aligned)
+3. 2–3 Practical Portfolio Project Ideas
+4. 90-Day Structured Roadmap (weekly breakdown)
+
+Be realistic, practical, and market-relevant.
+Avoid generic advice.
+Keep it structured and professional.
+"""
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are an expert AI Career Strategist."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.6
+            )
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+            return f"⚠️ GPT Error: {str(e)}"
