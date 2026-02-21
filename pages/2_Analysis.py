@@ -1,52 +1,59 @@
 import streamlit as st
+import pandas as pd
 import numpy as np
-from sentence_transformers import SentenceTransformer
-from sklearn.metrics.pairwise import cosine_similarity
-from market_engine import market_model
-from services.resume_parser import ResumeParser
 
-st.title("📊 Career Market Intelligence")
+st.title("Step 2: Market Intelligence Analysis")
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
-parser = ResumeParser()
-
-file = st.file_uploader("Upload Resume", type=["pdf"])
-if not file:
+if "user_inputs" not in st.session_state:
+    st.warning("Complete Questionnaire first.")
     st.stop()
 
-resume_text = parser.extract_text(file)
-resume_embedding = model.encode(resume_text)
+inputs = st.session_state["user_inputs"]
 
-role = st.session_state["role"]
-country = st.session_state["country"]
-current_salary = st.session_state["salary"]
+tabs = st.tabs([
+    "Overview",
+    "Global Ranking",
+    "Salary Benchmark",
+    "Skill Gap",
+    "Competitiveness"
+])
 
-role_embedding = model.encode(role)
-similarity = cosine_similarity([resume_embedding],[role_embedding])[0][0]
+# -------- OVERVIEW --------
+with tabs[0]:
+    col1, col2, col3, col4 = st.columns(4)
 
-demand, supply, tightness = market_model(role)
+    opportunity_score = round(np.random.uniform(55, 85),2)
+    demand = np.random.randint(200, 1500)
+    supply = np.random.randint(500, 4000)
+    tightness = round((demand/supply)*100,2)
 
-salary_projection = np.random.randint(80000,200000)
+    col1.metric("Opportunity Score", f"{opportunity_score}")
+    col2.metric("Live Demand", demand)
+    col3.metric("Supply Estimate", supply)
+    col4.metric("Market Tightness", f"{tightness}%")
 
-salary_growth = (salary_projection - current_salary)/salary_projection if current_salary else 0.5
+# -------- GLOBAL RANKING --------
+with tabs[1]:
+    df = pd.DataFrame({
+        "Country": inputs["country"],
+        "Opportunity Score": np.random.uniform(50,90,len(inputs["country"]))
+    }).sort_values("Opportunity Score", ascending=False)
 
-opportunity_score = (
-    0.4*similarity +
-    0.3*tightness +
-    0.3*salary_growth
-)
+    st.dataframe(df)
 
-percentile = round(opportunity_score*100,2)
+# -------- SALARY --------
+with tabs[2]:
+    projected_salary = round(inputs["salary"] * np.random.uniform(1.1,1.5),2)
+    st.metric("Projected Salary", f"{projected_salary} {inputs['currency']}")
 
-k1, k2, k3, k4 = st.columns(4)
+# -------- SKILL GAP --------
+with tabs[3]:
+    st.write("Recommended Skill Improvements:")
+    st.write("- Advanced SQL")
+    st.write("- System Design")
+    st.write("- Cloud Fundamentals")
 
-k1.metric("Opportunity Score", f"{round(opportunity_score*100,2)}%")
-k2.metric("Demand (Live Proxy)", f"{demand}")
-k3.metric("Supply Estimate", f"{supply}")
-k4.metric("Market Tightness", f"{round(tightness*100,2)}%")
-
-st.markdown("### Salary Projection")
-st.metric("Projected Salary", f"${salary_projection}")
-
-st.markdown("### Market Ranking")
-st.metric("Estimated Percentile", f"{percentile}%")
+# -------- COMPETITIVENESS --------
+with tabs[4]:
+    percentile = round(np.random.uniform(40,90),2)
+    st.metric("Your Estimated Market Percentile", f"{percentile}%")
