@@ -36,7 +36,7 @@ resume_text = parser.extract_text(file)
 resume_embedding = model.encode(resume_text)
 
 # -----------------------------------
-# GLOBAL ROLE BANK (Corporate Only)
+# GLOBAL ROLE BANK (Corporate)
 # -----------------------------------
 
 def get_global_role_bank():
@@ -80,15 +80,15 @@ st.write(top_roles)
 # COUNTRY MAP
 # -----------------------------------
 
-countries = {
-    "USA": "us",
-    "UK": "gb",
-    "Canada": "ca",
-    "Germany": "de",
-    "India": "in",
-    "Singapore": "sg",
-    "Australia": "au"
-}
+countries = [
+    "USA",
+    "UK",
+    "Canada",
+    "Germany",
+    "India",
+    "Singapore",
+    "Australia"
+]
 
 ppp_index = {
     "USA":1.0,
@@ -101,7 +101,7 @@ ppp_index = {
 }
 
 # -----------------------------------
-# FETCH LIVE ROLES (RapidAPI JSearch)
+# FETCH LIVE ROLES (FIXED QUERY)
 # -----------------------------------
 
 @st.cache_data(ttl=1800)
@@ -114,17 +114,17 @@ def fetch_live_roles(top_roles):
         "X-RapidAPI-Host": "jsearch.p.rapidapi.com"
     }
 
-    for country_name, country_code in countries.items():
+    for country_name in countries:
 
         for role in top_roles:
 
             url = "https://jsearch.p.rapidapi.com/search"
 
+            # ✅ FIX: Embed location into query
             params = {
-                "query": role,
+                "query": f"{role} jobs in {country_name}",
                 "page": "1",
-                "num_pages": "1",
-                "country": country_code
+                "num_pages": "1"
             }
 
             try:
@@ -168,7 +168,7 @@ def fetch_live_roles(top_roles):
 roles_df = fetch_live_roles(top_roles)
 
 if roles_df.empty:
-    st.warning("No live corporate roles found. Check RapidAPI key.")
+    st.warning("No live corporate roles found.")
     st.stop()
 
 # -----------------------------------
