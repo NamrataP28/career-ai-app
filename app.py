@@ -36,59 +36,69 @@ resume_text = parser.extract_text(file)
 resume_embedding = model.encode(resume_text)
 
 # -----------------------------------
-# CORPORATE SKILL ENGINE (EXPANDED)
+# GLOBAL ROLE BANK
 # -----------------------------------
 
-def extract_skills(text):
+def get_global_role_bank():
+    return [
+        # Analytics
+        "Data Analyst","Business Analyst","Product Analyst",
+        "Marketing Analyst","Financial Analyst","Risk Analyst",
 
-    corporate_skills = {
+        # Finance
+        "Finance Manager","Investment Analyst","Portfolio Manager",
+        "Credit Risk Manager","Corporate Finance Manager",
 
-        # Data & Analytics
-        "data analytics","business intelligence","sql","python","r",
-        "power bi","tableau","data visualization","statistics",
-        "machine learning","predictive modeling","forecasting",
-        "etl","data warehousing","big data","hadoop","spark",
+        # Product
+        "Product Manager","Senior Product Manager",
+        "Growth Product Manager","Product Owner",
 
-        # Product & Strategy
-        "product management","roadmap","stakeholder management",
-        "agile","scrum","ux","user research","market research",
-        "a/b testing","growth strategy","pricing strategy",
+        # Strategy
+        "Strategy Consultant","Management Consultant",
+        "Business Consultant","Corporate Strategy Manager",
 
-        # Finance & Risk
-        "financial modeling","valuation","budgeting","credit risk",
-        "fraud detection","investment analysis","portfolio management",
-        "financial reporting","p&l","compliance","aml","kyc",
+        # Marketing
+        "Marketing Manager","Growth Manager",
+        "Performance Marketing Manager",
+        "Digital Marketing Manager","Brand Manager",
 
-        # Marketing & Growth
-        "seo","sem","google analytics","campaign management",
-        "brand strategy","performance marketing",
-        "digital marketing","content strategy","crm",
-        "customer acquisition","conversion optimization",
+        # Operations
+        "Operations Manager","Supply Chain Manager",
+        "Program Manager","Project Manager",
 
-        # Technology & Engineering
-        "software engineering","backend","frontend",
-        "react","node","java","c++","cloud","aws","azure","gcp",
-        "devops","docker","kubernetes","microservices",
-        "api integration","system architecture",
+        # Technology
+        "Software Engineer","Backend Engineer",
+        "Frontend Engineer","Machine Learning Engineer",
+        "Data Engineer","Cloud Engineer",
 
-        # Consulting & Operations
-        "consulting","business transformation","process optimization",
-        "operations management","supply chain",
-        "change management","strategy development",
-        "lean","six sigma",
+        # Leadership
+        "Head of Analytics","Head of Product",
+        "Director of Strategy","VP Operations",
+        "Chief Data Officer"
+    ]
 
-        # Leadership & Corporate
-        "team leadership","cross functional collaboration",
-        "executive communication","board reporting",
-        "stakeholder alignment","project management",
-        "program management","decision making",
-        "corporate strategy"
-    }
+# -----------------------------------
+# DETECT TOP MATCHING ROLES
+# -----------------------------------
 
-    text_lower = text.lower()
-    return list(set([s for s in corporate_skills if s in text_lower]))
+def detect_top_roles(resume_embedding, top_n=6):
 
-resume_skills = extract_skills(resume_text)
+    role_bank = get_global_role_bank()
+    scored = []
+
+    for role in role_bank:
+        role_emb = model.encode(role)
+        score = cosine_similarity(
+            [resume_embedding],
+            [role_emb]
+        )[0][0]
+        scored.append((role, score))
+
+    scored.sort(key=lambda x: x[1], reverse=True)
+
+    return [r[0] for r in scored[:top_n]]
+
+top_roles = detect_top_roles(resume_embedding)
 
 # -----------------------------------
 # MARKET SCOPE
@@ -113,16 +123,16 @@ def get_country_map(mode):
     }
 
     full = {
-        "USA": "us","Canada": "ca","Mexico": "mx",
-        "UK": "gb","Ireland": "ie","Germany": "de",
-        "France": "fr","Netherlands": "nl","Belgium": "be",
-        "Spain": "es","Italy": "it","Poland": "pl",
-        "Sweden": "se","Norway": "no","Denmark": "dk",
-        "Austria": "at","Switzerland": "ch",
-        "UAE": "ae","Saudi Arabia": "sa",
-        "India": "in","Singapore": "sg",
-        "Australia": "au","New Zealand": "nz",
-        "South Africa": "za","Brazil": "br"
+        "USA":"us","Canada":"ca","Mexico":"mx",
+        "UK":"gb","Ireland":"ie","Germany":"de",
+        "France":"fr","Netherlands":"nl","Belgium":"be",
+        "Spain":"es","Italy":"it","Poland":"pl",
+        "Sweden":"se","Norway":"no","Denmark":"dk",
+        "Austria":"at","Switzerland":"ch",
+        "UAE":"ae","Saudi Arabia":"sa",
+        "India":"in","Singapore":"sg",
+        "Australia":"au","New Zealand":"nz",
+        "South Africa":"za","Brazil":"br"
     }
 
     return core if mode == "Core Markets" else full
@@ -147,50 +157,52 @@ ppp_index = {
 }
 
 # -----------------------------------
-# FETCH LIVE ROLES
+# FETCH LIVE ROLES (MULTI ROLE + MULTI COUNTRY)
 # -----------------------------------
 
 @st.cache_data(ttl=1800)
-def fetch_live_roles(resume_text):
+def fetch_live_roles(top_roles):
 
-    search_keywords = " ".join(resume_skills) if resume_skills else resume_text[:300]
     all_roles = []
 
     for country_name, code in countries.items():
 
-        for page in range(1, 3):
+        for role in top_roles:
 
-            url = f"https://api.adzuna.com/v1/api/jobs/{code}/search/{page}"
+            for page in range(1, 3):
 
-            params = {
-                "app_id": st.secrets["ADZUNA_APP_ID"],
-                "app_key": st.secrets["ADZUNA_APP_KEY"],
-                "results_per_page": 20,
-                "what": search_keywords
-            }
+                url = f"https://api.adzuna.com/v1/api/jobs/{code}/search/{page}"
 
-            try:
-                r = requests.get(url, params=params)
-                data = r.json()
-                total_demand = data.get("count", 0)
+                params = {
+                    "app_id": st.secrets["ADZUNA_APP_ID"],
+                    "app_key": st.secrets["ADZUNA_APP_KEY"],
+                    "results_per_page": 20,
+                    "what": role
+                }
 
-                for job in data.get("results", []):
+                try:
+                    r = requests.get(url, params=params)
+                    data = r.json()
 
-                    salary_min = job.get("salary_min") or 0
-                    salary_max = job.get("salary_max") or 0
-                    avg_salary = (salary_min + salary_max)/2 if salary_max else salary_min
-                    salary_ppp = avg_salary / ppp_index.get(country_name,1) if avg_salary else 0
+                    total_demand = data.get("count", 0)
 
-                    all_roles.append({
-                        "Role": job.get("title"),
-                        "Country": country_name,
-                        "Demand": total_demand,
-                        "Salary_PPP": salary_ppp,
-                        "Description": job.get("description")
-                    })
+                    for job in data.get("results", []):
 
-            except:
-                continue
+                        salary_min = job.get("salary_min") or 0
+                        salary_max = job.get("salary_max") or 0
+                        avg_salary = (salary_min + salary_max)/2 if salary_max else salary_min
+                        salary_ppp = avg_salary / ppp_index.get(country_name,1) if avg_salary else 0
+
+                        all_roles.append({
+                            "Role": job.get("title"),
+                            "Country": country_name,
+                            "Demand": total_demand,
+                            "Salary_PPP": salary_ppp,
+                            "Description": job.get("description")
+                        })
+
+                except:
+                    continue
 
     df = pd.DataFrame(all_roles)
     if df.empty:
@@ -198,10 +210,10 @@ def fetch_live_roles(resume_text):
 
     return df.drop_duplicates(subset=["Role","Country"])
 
-roles_df = fetch_live_roles(resume_text)
+roles_df = fetch_live_roles(top_roles)
 
 if roles_df.empty:
-    st.warning("No live corporate roles found.")
+    st.warning("No live corporate roles found. Check API credentials.")
     st.stop()
 
 # -----------------------------------
@@ -209,6 +221,7 @@ if roles_df.empty:
 # -----------------------------------
 
 results = []
+
 max_demand = roles_df["Demand"].max() or 1
 max_salary = roles_df["Salary_PPP"].max() or 1
 
@@ -230,27 +243,17 @@ for _, row in roles_df.iterrows():
     demand_norm = row["Demand"]/max_demand
     salary_norm = row["Salary_PPP"]/max_salary
 
-    job_skills = extract_skills(row["Description"] or "")
-    skill_overlap = len(set(resume_skills)&set(job_skills))
-    skill_match = skill_overlap/max(len(job_skills),1)
-
-    if any(keyword in row["Role"].lower() for keyword in 
-           ["manager","lead","head","director","analyst","consultant","strategist"]):
-        skill_match *= 1.1
-
     final_score = (
-        0.40*similarity +
+        0.45*similarity +
         0.20*demand_norm +
         0.15*visa_score +
-        0.15*salary_norm +
-        0.10*skill_match
+        0.20*salary_norm
     )
 
     results.append({
         "Role":row["Role"],
         "Country":row["Country"],
         "Skill Match %":round(similarity*100,2),
-        "Technical Overlap %":round(skill_match*100,2),
         "Visa Feasibility %":round(visa_score*100,2),
         "Market Demand %":round(demand_norm*100,2),
         "PPP Salary Index %":round(salary_norm*100,2),
@@ -278,7 +281,7 @@ display_df = ranked_df if country_filter=="Worldwide" else ranked_df[ranked_df["
 st.dataframe(display_df.head(25),use_container_width=True)
 
 # -----------------------------------
-# INTERACTIVE VISUAL
+# PROFESSIONAL VISUAL
 # -----------------------------------
 
 fig = px.scatter(
@@ -287,18 +290,14 @@ fig = px.scatter(
     y="Market Demand %",
     size="PPP Salary Index %",
     color="Country",
-    hover_data=[
-        "Global Opportunity Score %",
-        "Visa Feasibility %",
-        "Technical Overlap %"
-    ],
+    hover_data=["Global Opportunity Score %","Visa Feasibility %"],
     height=600
 )
 
 st.plotly_chart(fig,use_container_width=True)
 
 # -----------------------------------
-# CAREER CLUSTERING
+# ADJACENT ROLES
 # -----------------------------------
 
 st.subheader("🔎 Adjacent Career Paths")
@@ -306,10 +305,7 @@ st.subheader("🔎 Adjacent Career Paths")
 top_embedding = model.encode(ranked_df.iloc[0]["Role"])
 
 ranked_df["Role Similarity"] = ranked_df["Role"].apply(
-    lambda r: cosine_similarity(
-        [top_embedding],
-        [model.encode(r)]
-    )[0][0]
+    lambda r: cosine_similarity([top_embedding],[model.encode(r)])[0][0]
 )
 
 cluster_df = ranked_df.sort_values(
