@@ -2,6 +2,7 @@ import streamlit as st
 import plotly.express as px
 import pandas as pd
 import requests
+import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 from services.resume_parser import ResumeParser
@@ -12,14 +13,13 @@ from services.gpt_service import GPTService
 # INITIALIZE
 # -----------------------------------
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+st.set_page_config(layout="wide")
+st.title("🚀 AI Career Intelligence Platform")
 
+model = SentenceTransformer("all-MiniLM-L6-v2")
 parser = ResumeParser()
 visa_model = VisaModel()
 gpt_service = GPTService()
-
-st.set_page_config(layout="wide")
-st.title("🚀 AI Career Intelligence Platform")
 
 # -----------------------------------
 # FILE UPLOAD
@@ -62,17 +62,18 @@ def detect_industry(resume_embedding):
 
     return best_match
 
+
 industry = detect_industry(resume_embedding)
 
 st.subheader("🧠 Detected Industry")
 st.success(industry)
 
 # -----------------------------------
-# MULTI-COUNTRY LIVE ROLE FETCH
+# LIVE ROLE FETCH WITH DEMAND
 # -----------------------------------
 
 @st.cache_data(ttl=3600)
-def fetch_roles(industry):
+def fetch_roles_with_demand(industry):
 
     countries = {
         "UK": "gb",
@@ -92,7 +93,7 @@ def fetch_roles(industry):
         params = {
             "app_id": st.secrets["ADZUNA_APP_ID"],
             "app_key": st.secrets["ADZUNA_APP_KEY"],
-            "results_per_page": 15,
+            "results_per_page": 20,
             "what": industry
         }
 
@@ -100,31 +101,36 @@ def fetch_roles(industry):
             response = requests.get(url, params=params)
             data = response.json()
 
+            total_count = data.get("count", 0)
+
             for job in data.get("results", []):
                 all_roles.append({
                     "Role": job.get("title"),
-                    "Country": country_name
+                    "Country": country_name,
+                    "Demand": total_count
                 })
 
         except:
             continue
 
-    # Remove duplicates
     df_roles = pd.DataFrame(all_roles).drop_duplicates(subset=["Role", "Country"])
 
     return df_roles
 
-roles_df = fetch_roles(industry)
+
+roles_df = fetch_roles_with_demand(industry)
 
 if roles_df.empty:
     st.warning("No live roles found.")
     st.stop()
 
 # -----------------------------------
-# RESUME-FIRST GLOBAL RANKING
+# RESUME-FIRST GLOBAL SCORING
 # -----------------------------------
 
 results = []
+
+max_demand = roles_df["Demand"].max() if roles_df["Demand"].max() > 0 else 1
 
 for _, row in roles_df.iterrows():
 
@@ -137,9 +143,13 @@ for _, row in roles_df.iterrows():
 
     visa_score = visa_model.visa_score(row["Country"])
 
+    demand_norm = row["Demand"] / max_demand
+
+    # Balanced weighted score
     final_score = (
-        0.7 * similarity +
-        0.3 * visa_score
+        0.6 * similarity +
+        0.25 * demand_norm +
+        0.15 * visa_score
     )
 
     results.append({
@@ -147,6 +157,7 @@ for _, row in roles_df.iterrows():
         "Country": row["Country"],
         "Match %": round(similarity * 100, 2),
         "Visa Score": round(visa_score * 100, 2),
+        "Market Demand Index": round(demand_norm * 100, 2),
         "Overall Score": round(final_score * 100, 2)
     })
 
@@ -174,16 +185,21 @@ else:
 st.dataframe(display_df.head(20), use_container_width=True)
 
 # -----------------------------------
-# INTERACTIVE GRAPH
+# INTERACTIVE VISUAL (CLEANER & SMARTER)
 # -----------------------------------
 
 fig = px.bar(
     display_df.head(10),
-    x="Role",
-    y="Overall Score",
+    x="Overall Score",
+    y="Role",
     color="Country",
-    hover_data=["Match %", "Visa Score"],
-    height=400
+    orientation="h",
+    hover_data=["Match %", "Visa Score", "Market Demand Index"],
+    height=450
+)
+
+fig.update_layout(
+    yaxis=dict(categoryorder="total ascending")
 )
 
 st.plotly_chart(fig, use_container_width=True)
