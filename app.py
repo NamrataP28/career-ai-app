@@ -69,11 +69,30 @@ st.subheader("🧠 Detected Industry")
 st.success(industry)
 
 # -----------------------------------
-# LIVE ROLE FETCH WITH DEMAND
+# SKILL EXTRACTION
+# -----------------------------------
+
+def extract_skills(text):
+
+    skills_db = [
+        "python", "sql", "excel", "power bi", "tableau",
+        "machine learning", "aws", "azure", "react",
+        "financial modeling", "risk analysis",
+        "product strategy", "seo", "marketing analytics"
+    ]
+
+    text_lower = text.lower()
+    return [s for s in skills_db if s in text_lower]
+
+
+resume_skills = extract_skills(resume_text)
+
+# -----------------------------------
+# LIVE ROLE FETCH WITH SALARY + PPP
 # -----------------------------------
 
 @st.cache_data(ttl=3600)
-def fetch_roles_with_demand(industry):
+def fetch_roles(industry):
 
     countries = {
         "UK": "gb",
@@ -84,11 +103,21 @@ def fetch_roles_with_demand(industry):
         "Singapore": "sg"
     }
 
-    all_roles = []
+    # PPP multipliers (approximate)
+    ppp_index = {
+        "UK": 1.0,
+        "USA": 1.0,
+        "Canada": 0.9,
+        "Australia": 0.95,
+        "India": 0.35,
+        "Singapore": 1.1
+    }
 
-    for country_name, country_code in countries.items():
+    roles = []
 
-        url = f"https://api.adzuna.com/v1/api/jobs/{country_code}/search/1"
+    for country_name, code in countries.items():
+
+        url = f"https://api.adzuna.com/v1/api/jobs/{code}/search/1"
 
         params = {
             "app_id": st.secrets["ADZUNA_APP_ID"],
@@ -98,27 +127,35 @@ def fetch_roles_with_demand(industry):
         }
 
         try:
-            response = requests.get(url, params=params)
-            data = response.json()
+            r = requests.get(url, params=params)
+            data = r.json()
 
-            total_count = data.get("count", 0)
+            total_demand = data.get("count", 0)
 
             for job in data.get("results", []):
-                all_roles.append({
+
+                salary_min = job.get("salary_min") or 0
+                salary_max = job.get("salary_max") or 0
+                avg_salary = (salary_min + salary_max) / 2 if salary_max else salary_min
+
+                salary_ppp = avg_salary / ppp_index[country_name] if avg_salary else 0
+
+                roles.append({
                     "Role": job.get("title"),
                     "Country": country_name,
-                    "Demand": total_count
+                    "Demand": total_demand,
+                    "Salary": avg_salary,
+                    "Salary_PPP": salary_ppp,
+                    "Description": job.get("description")
                 })
 
         except:
             continue
 
-    df_roles = pd.DataFrame(all_roles).drop_duplicates(subset=["Role", "Country"])
-
-    return df_roles
+    return pd.DataFrame(roles).drop_duplicates(subset=["Role", "Country"])
 
 
-roles_df = fetch_roles_with_demand(industry)
+roles_df = fetch_roles(industry)
 
 if roles_df.empty:
     st.warning("No live roles found.")
@@ -130,41 +167,42 @@ if roles_df.empty:
 
 results = []
 
-max_demand = roles_df["Demand"].max() if roles_df["Demand"].max() > 0 else 1
+max_demand = roles_df["Demand"].max() or 1
+max_salary_ppp = roles_df["Salary_PPP"].max() or 1
 
 for _, row in roles_df.iterrows():
 
     job_embedding = model.encode(row["Role"])
-
-    similarity = cosine_similarity(
-        [resume_embedding],
-        [job_embedding]
-    )[0][0]
+    similarity = cosine_similarity([resume_embedding], [job_embedding])[0][0]
 
     visa_score = visa_model.visa_score(row["Country"])
-
     demand_norm = row["Demand"] / max_demand
+    salary_norm = row["Salary_PPP"] / max_salary_ppp
 
-    # Balanced weighted score
+    job_skills = extract_skills(row["Description"] or "")
+    skill_overlap = len(set(resume_skills) & set(job_skills))
+    skill_match = skill_overlap / len(job_skills) if job_skills else 0
+
     final_score = (
-        0.6 * similarity +
-        0.25 * demand_norm +
-        0.15 * visa_score
+        0.45 * similarity +
+        0.20 * demand_norm +
+        0.15 * visa_score +
+        0.10 * salary_norm +
+        0.10 * skill_match
     )
 
     results.append({
         "Role": row["Role"],
         "Country": row["Country"],
         "Match %": round(similarity * 100, 2),
+        "Skill Match %": round(skill_match * 100, 2),
         "Visa Score": round(visa_score * 100, 2),
-        "Market Demand Index": round(demand_norm * 100, 2),
+        "Market Demand %": round(demand_norm * 100, 2),
+        "Salary (PPP Adjusted)": round(row["Salary_PPP"], 0),
         "Overall Score": round(final_score * 100, 2)
     })
 
-ranked_df = pd.DataFrame(results).sort_values(
-    "Overall Score",
-    ascending=False
-)
+ranked_df = pd.DataFrame(results).sort_values("Overall Score", ascending=False)
 
 # -----------------------------------
 # COUNTRY FILTER
@@ -177,35 +215,57 @@ country_filter = st.selectbox(
     ["Worldwide"] + sorted(ranked_df["Country"].unique())
 )
 
-if country_filter != "Worldwide":
-    display_df = ranked_df[ranked_df["Country"] == country_filter]
-else:
-    display_df = ranked_df
+display_df = ranked_df if country_filter == "Worldwide" else ranked_df[ranked_df["Country"] == country_filter]
 
 st.dataframe(display_df.head(20), use_container_width=True)
 
 # -----------------------------------
-# INTERACTIVE VISUAL (CLEANER & SMARTER)
+# INTERACTIVE GRAPH
 # -----------------------------------
 
 fig = px.bar(
     display_df.head(10),
     x="Overall Score",
     y="Role",
-    color="Country",
     orientation="h",
-    hover_data=["Match %", "Visa Score", "Market Demand Index"],
+    color="Country",
+    hover_data=[
+        "Match %",
+        "Skill Match %",
+        "Visa Score",
+        "Market Demand %",
+        "Salary (PPP Adjusted)"
+    ],
     height=450
 )
 
-fig.update_layout(
-    yaxis=dict(categoryorder="total ascending")
-)
-
+fig.update_layout(yaxis=dict(categoryorder="total ascending"))
 st.plotly_chart(fig, use_container_width=True)
 
 # -----------------------------------
-# GPT PERSONALIZED ROADMAP
+# CAREER CLUSTERING
+# -----------------------------------
+
+st.subheader("🔎 Adjacent Career Paths")
+
+top_embedding = model.encode(ranked_df.iloc[0]["Role"])
+
+ranked_df["Role Similarity"] = ranked_df["Role"].apply(
+    lambda r: cosine_similarity(
+        [top_embedding],
+        [model.encode(r)]
+    )[0][0]
+)
+
+cluster_df = ranked_df.sort_values("Role Similarity", ascending=False).iloc[1:6]
+
+st.dataframe(
+    cluster_df[["Role", "Country", "Overall Score"]],
+    use_container_width=True
+)
+
+# -----------------------------------
+# GPT ROADMAP
 # -----------------------------------
 
 st.subheader("🎯 AI Career Roadmap")
@@ -214,9 +274,6 @@ if st.button("Generate Personalized Roadmap for Top Role"):
 
     top_role = ranked_df.iloc[0]["Role"]
 
-    roadmap = gpt_service.generate_roadmap(
-        resume_text,
-        top_role
-    )
+    roadmap = gpt_service.generate_roadmap(resume_text, top_role)
 
     st.write(roadmap)
