@@ -1,6 +1,6 @@
 import streamlit as st
 import sqlite3
-ffrom database.db import init_db, authenticate_user, register_user
+from database.db import init_db, authenticate_user, register_user
 
 st.set_page_config(page_title="Career Intelligence", layout="wide")
 
