@@ -13,10 +13,10 @@ from services.gpt_service import GPTService
 # -----------------------------------
 
 st.set_page_config(layout="wide")
-st.title("🚀 AI Career Intelligence Engine — Global")
+st.title("🚀 AI Career Intelligence Engine")
 
 # -----------------------------------
-# INITIALIZE SERVICES
+# INITIALIZE
 # -----------------------------------
 
 model = SentenceTransformer("all-MiniLM-L6-v2")
@@ -25,10 +25,50 @@ visa_model = VisaModel()
 gpt_service = GPTService()
 
 # -----------------------------------
-# FILE UPLOAD
+# STEP 1: USER INTENT COLLECTION
 # -----------------------------------
 
+st.header("Step 1: Tell Us About Your Goals")
+
+career_goal = st.selectbox(
+    "What is your primary goal?",
+    ["Salary Growth", "Global Mobility", "Leadership Growth", "Stability"]
+)
+
+career_direction = st.selectbox(
+    "What are you looking for?",
+    ["Stay in same domain", "Switch domain", "Explore opportunities"]
+)
+
+preferred_roles = st.multiselect(
+    "Select roles you are interested in",
+    [
+        "Data Analyst","Business Analyst","Product Manager",
+        "Marketing Manager","Financial Analyst",
+        "Strategy Consultant","Operations Manager",
+        "Software Engineer","Machine Learning Engineer"
+    ]
+)
+
+preferred_countries = st.multiselect(
+    "Preferred Countries",
+    ["India","USA","UK","Canada","Germany","Singapore","Australia"]
+)
+
+current_salary = st.number_input("Your current annual salary (USD)", min_value=0)
+
+if not preferred_roles:
+    st.warning("Select at least one role of interest.")
+    st.stop()
+
+# -----------------------------------
+# STEP 2: UPLOAD RESUME
+# -----------------------------------
+
+st.header("Step 2: Upload Resume")
+
 file = st.file_uploader("Upload Resume (PDF)", type=["pdf"])
+
 if not file:
     st.stop()
 
@@ -36,69 +76,18 @@ resume_text = parser.extract_text(file)
 resume_embedding = model.encode(resume_text)
 
 # -----------------------------------
-# GLOBAL CORPORATE ROLE BANK
-# -----------------------------------
-
-role_bank = [
-    # Analytics
-    "Data Analyst","Business Analyst","Product Analyst",
-    "Marketing Analyst","Financial Analyst","Risk Analyst",
-    "FP&A Analyst","Analytics Manager",
-
-    # Product
-    "Product Manager","Growth Product Manager",
-    "Product Operations Manager","Head of Product",
-
-    # Marketing
-    "Marketing Manager","Growth Manager",
-    "Performance Marketing Manager",
-    "Digital Marketing Manager",
-
-    # Finance
-    "Finance Manager","Investment Analyst",
-    "Corporate Finance Manager","Strategy Finance Manager",
-
-    # Consulting
-    "Management Consultant","Strategy Consultant",
-    "Transformation Consultant",
-
-    # Operations
-    "Operations Manager","Program Manager",
-    "Supply Chain Manager",
-
-    # Tech
-    "Software Engineer","Backend Engineer",
-    "Machine Learning Engineer","Data Engineer",
-    "Engineering Manager",
-
-    # Leadership
-    "Director of Strategy","Head of Analytics",
-    "Chief Product Officer"
-]
-
-countries = [
-    "India",
-    "USA",
-    "UK",
-    "Canada",
-    "Germany",
-    "Singapore",
-    "Australia"
-]
-
-# -----------------------------------
-# SIMULATED MARKET ENGINE (Stable)
+# MARKET SIMULATION ENGINE
 # -----------------------------------
 
 def generate_market_data():
 
     rows = []
 
-    for role in role_bank:
-        for country in countries:
+    for role in preferred_roles:
+        for country in preferred_countries:
 
-            demand = np.random.randint(50, 500)
-            salary = np.random.randint(60000, 200000)
+            demand = np.random.randint(100, 800)
+            salary = np.random.randint(60000, 220000)
 
             rows.append({
                 "Role": role,
@@ -112,7 +101,7 @@ def generate_market_data():
 market_df = generate_market_data()
 
 # -----------------------------------
-# RESUME-FIRST SCORING
+# SCORING ENGINE
 # -----------------------------------
 
 results = []
@@ -123,86 +112,108 @@ max_salary = market_df["Avg Salary"].max()
 for _, row in market_df.iterrows():
 
     role_embedding = model.encode(row["Role"])
-
     similarity = cosine_similarity(
         [resume_embedding],
         [role_embedding]
     )[0][0]
 
+    interest_score = 1.0  # because user selected these roles
+
     visa_score = visa_model.visa_score(row["Country"])
     demand_norm = row["Market Demand"] / max_demand
     salary_norm = row["Avg Salary"] / max_salary
 
+    # Salary growth potential
+    if current_salary > 0:
+        salary_growth = max(row["Avg Salary"] - current_salary, 0) / max_salary
+    else:
+        salary_growth = 0.5
+
+    # Goal-based adjustment
+    if career_goal == "Salary Growth":
+        goal_boost = salary_growth
+    elif career_goal == "Global Mobility":
+        goal_boost = visa_score
+    elif career_goal == "Leadership Growth":
+        goal_boost = similarity
+    else:
+        goal_boost = demand_norm
+
     final_score = (
-        0.55 * similarity +
-        0.20 * demand_norm +
-        0.15 * visa_score +
-        0.10 * salary_norm
+        0.35 * similarity +
+        0.20 * interest_score +
+        0.15 * salary_growth +
+        0.15 * demand_norm +
+        0.10 * visa_score +
+        0.05 * goal_boost
     )
 
     results.append({
         "Role": row["Role"],
         "Country": row["Country"],
         "Match %": round(similarity * 100, 2),
-        "Visa Score %": round(visa_score * 100, 2),
-        "Demand Index %": round(demand_norm * 100, 2),
-        "Salary Index %": round(salary_norm * 100, 2),
-        "Global Opportunity Score %": round(final_score * 100, 2)
+        "Salary Growth %": round(salary_growth * 100, 2),
+        "Demand %": round(demand_norm * 100, 2),
+        "Visa %": round(visa_score * 100, 2),
+        "Opportunity Score %": round(final_score * 100, 2),
+        "Avg Salary": row["Avg Salary"]
     })
 
 ranked_df = pd.DataFrame(results).sort_values(
-    "Global Opportunity Score %",
+    "Opportunity Score %",
     ascending=False
 )
 
 # -----------------------------------
-# COUNTRY FILTER
+# DISPLAY RESULTS
 # -----------------------------------
 
-st.subheader("🌍 Global Opportunity Ranking")
+st.header("Step 3: Your Market Position")
 
-country_filter = st.selectbox(
-    "Filter by Country",
-    ["Worldwide"] + countries
-)
-
-if country_filter == "Worldwide":
-    display_df = ranked_df
-else:
-    display_df = ranked_df[ranked_df["Country"] == country_filter]
-
-st.dataframe(display_df.head(20), use_container_width=True)
+st.dataframe(ranked_df, use_container_width=True)
 
 # -----------------------------------
-# INTERACTIVE VISUAL
+# VISUALIZATION
 # -----------------------------------
 
 fig = px.bar(
-    display_df.head(10),
-    x="Global Opportunity Score %",
+    ranked_df,
+    x="Opportunity Score %",
     y="Role",
     color="Country",
     orientation="h",
-    hover_data=[
-        "Match %",
-        "Visa Score %",
-        "Demand Index %",
-        "Salary Index %"
-    ],
+    hover_data=["Match %","Salary Growth %","Demand %","Visa %"],
     height=500
 )
 
-fig.update_layout(
-    yaxis=dict(categoryorder="total ascending")
-)
-
+fig.update_layout(yaxis=dict(categoryorder="total ascending"))
 st.plotly_chart(fig, use_container_width=True)
 
 # -----------------------------------
-# AI CAREER ROADMAP
+# BENCHMARK POSITION
 # -----------------------------------
 
-if st.button("Generate Career Roadmap for Top Role"):
+st.subheader("📊 Market Benchmark")
+
+avg_market_score = ranked_df["Opportunity Score %"].mean()
+
+st.metric(
+    "Your Average Global Opportunity Score",
+    f"{round(avg_market_score,2)}%"
+)
+
+if avg_market_score > 70:
+    st.success("You are strongly positioned in the market.")
+elif avg_market_score > 50:
+    st.info("You are moderately competitive.")
+else:
+    st.warning("Skill upgrade recommended for stronger positioning.")
+
+# -----------------------------------
+# GPT ROADMAP
+# -----------------------------------
+
+if st.button("Generate Personalized Roadmap"):
 
     top_role = ranked_df.iloc[0]["Role"]
 
@@ -214,18 +225,15 @@ if st.button("Generate Career Roadmap for Top Role"):
     st.markdown(roadmap)
 
 # -----------------------------------
-# MOTIVATION BLOCK
+# MOTIVATIONAL BLOCK
 # -----------------------------------
 
 st.markdown("---")
-st.subheader("🧘 Daily Strength")
-
 quotes = [
     "You have the right to perform your duty, but not to the fruits of your actions. — Bhagavad Gita",
-    "Focus on progress, not perfection.",
+    "Skill compounds. Keep building.",
     "Rejections are redirections.",
-    "Skill compounds. Effort compounds faster.",
-    "Your current level is not your ceiling."
+    "Growth happens outside comfort zones."
 ]
 
 st.success(np.random.choice(quotes))
