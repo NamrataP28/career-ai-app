@@ -1,9 +1,14 @@
 import streamlit as st
-from database.db import init_db, authenticate_user, register_user
+import hashlib
+from database.db import init_db, login_user, register_user
 
 # ------------------ INIT ------------------
 init_db()
 st.set_page_config(layout="wide")
+
+# ------------------ PASSWORD HASHING ------------------
+def hash_password(password):
+    return hashlib.sha256(password.encode()).hexdigest()
 
 # ------------------ SESSION STATE ------------------
 if "authenticated" not in st.session_state:
@@ -78,14 +83,19 @@ if not st.session_state["authenticated"]:
         password = st.text_input("Password", type="password")
 
         if st.button("Login"):
-            user = authenticate_user(email, password)
-            if user:
-                st.session_state["authenticated"] = True
-                st.session_state["email"] = email
-                st.success("Login successful.")
-                st.rerun()
+            if email and password:
+                hashed_pw = hash_password(password)
+                user = login_user(email, hashed_pw)
+
+                if user:
+                    st.session_state["authenticated"] = True
+                    st.session_state["email"] = email
+                    st.success("Login successful.")
+                    st.rerun()
+                else:
+                    st.error("Invalid credentials.")
             else:
-                st.error("Invalid credentials.")
+                st.warning("Please enter email and password.")
 
     # -------- REGISTER --------
     with tab2:
@@ -93,14 +103,23 @@ if not st.session_state["authenticated"]:
         new_password = st.text_input("New Password", type="password")
 
         if st.button("Register"):
-            register_user(new_email, new_password)
-            st.success("Account created. You can now login.")
+            if new_email and new_password:
+                hashed_pw = hash_password(new_password)
+                success = register_user(new_email, hashed_pw)
+
+                if success:
+                    st.success("Account created successfully. You can now login.")
+                else:
+                    st.error("Email already exists.")
+            else:
+                st.warning("Please fill all fields.")
+
+
+# =====================================================
+# LOGGED-IN LANDING
+# =====================================================
 
 else:
-
-    # =====================================================
-    # LOGGED-IN LANDING
-    # =====================================================
 
     st.sidebar.success(f"Logged in as {st.session_state['email']}")
 
