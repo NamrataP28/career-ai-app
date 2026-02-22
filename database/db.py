@@ -62,3 +62,21 @@ def login_user(email, hashed_pw):
     conn.close()
 
     return user
+def get_user_history(email):
+
+    conn = sqlite3.connect("career.db")
+    c = conn.cursor()
+
+    c.execute("""
+        SELECT target_role, country,
+               opportunity_score, probability,
+               percentile, created_at
+        FROM sessions
+        WHERE email=?
+        ORDER BY created_at ASC
+    """, (email,))
+
+    rows = c.fetchall()
+    conn.close()
+
+    return rows
