@@ -1,5 +1,12 @@
 import streamlit as st
 import hashlib
+import sys
+import os
+
+# ------------------ FIX IMPORT PATH (IMPORTANT FOR STREAMLIT CLOUD) ------------------
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.append(BASE_DIR)
+
 from database.db import init_db, login_user, register_user
 
 # ------------------ INIT ------------------
@@ -79,8 +86,8 @@ if not st.session_state["authenticated"]:
 
     # -------- LOGIN --------
     with tab1:
-        email = st.text_input("Email")
-        password = st.text_input("Password", type="password")
+        email = st.text_input("Email", key="login_email")
+        password = st.text_input("Password", type="password", key="login_password")
 
         if st.button("Login"):
             if email and password:
@@ -99,8 +106,8 @@ if not st.session_state["authenticated"]:
 
     # -------- REGISTER --------
     with tab2:
-        new_email = st.text_input("New Email")
-        new_password = st.text_input("New Password", type="password")
+        new_email = st.text_input("New Email", key="register_email")
+        new_password = st.text_input("New Password", type="password", key="register_password")
 
         if st.button("Register"):
             if new_email and new_password:
