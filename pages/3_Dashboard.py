@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from database.db import SessionLocal
+from database.db import get_user_history
 from database.models import AnalysisHistory
 
 if "username" not in st.session_state:
