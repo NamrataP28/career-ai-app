@@ -7,6 +7,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib.pagesizes import letter
 
+from database.db import save_session
 from services.resume_scoring_engine import compute_resume_match
 from services.skill_engine import compute_skill_gap
 from services.probability_engine import interview_probability
@@ -23,6 +24,10 @@ from services.gpt_service import GPTService
 
 gpt_service = GPTService()
 
+if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
+    st.warning("Login first.")
+    st.stop()
+
 if "user_inputs" not in st.session_state:
     st.warning("Please complete Questionnaire first.")
     st.stop()
@@ -36,6 +41,8 @@ resume_text = st.session_state.get("resume_text", "")
 currency = inputs["currency"]
 current_salary = inputs.get("salary", 0)
 goal = inputs.get("goal", "Resume Health Check")
+target_company = inputs.get("target_company")
+career_stage = inputs.get("career_stage")
 
 if not countries:
     st.warning("Please select at least one country.")
@@ -43,7 +50,7 @@ if not countries:
 
 
 # ==================================================
-# COUNTRY ATTRACTIVENESS INDEX
+# COUNTRY ATTRACTIVENESS
 # ==================================================
 
 def country_attractiveness(country):
@@ -60,7 +67,7 @@ def country_attractiveness(country):
 
 
 # ==================================================
-# METRIC CALCULATION
+# COMPUTE METRICS
 # ==================================================
 
 results = []
@@ -113,7 +120,7 @@ if df.empty:
 
 
 # ==================================================
-# GLOBAL COMPOSITE MODEL
+# GLOBAL COMPOSITE RANKING
 # ==================================================
 
 df["Composite Score"] = (
@@ -130,14 +137,28 @@ df["Market Percentile"] = (
 
 
 # ==================================================
-# COUNTRY SELECTOR
+# SELECT COUNTRY
 # ==================================================
 
-st.subheader("🌍 Global Ranking Intelligence")
+st.subheader("🌍 Global Market Ranking")
 
 selected_country = st.selectbox("Select Country", df["Country"])
 
 row = df[df["Country"] == selected_country].iloc[0]
+
+
+# ==================================================
+# SAVE SESSION (FOR DASHBOARD TRACKING)
+# ==================================================
+
+save_session(
+    st.session_state["email"],
+    role,
+    selected_country,
+    row["Opportunity"],
+    row["Probability"],
+    row["Market Percentile"]
+)
 
 
 # ==================================================
@@ -168,12 +189,9 @@ with tab1:
     st.markdown("---")
 
     salary_gap = row["Salary"] - current_salary
-    salary_gap_pct = (
-        (salary_gap / current_salary * 100)
-        if current_salary > 0 else 0
-    )
+    salary_gap_pct = (salary_gap / current_salary * 100) if current_salary > 0 else 0
 
-    st.subheader("Compensation Benchmark")
+    st.subheader("💰 Salary Benchmark")
 
     colA, colB = st.columns(2)
 
@@ -183,19 +201,12 @@ with tab1:
     colB.metric("Salary Gap %",
                 f"{salary_gap_pct:.2f}%")
 
-    st.markdown("---")
+    if target_company:
+        st.markdown("---")
+        st.info(f"Company Targeting: Optimise resume keywords for {target_company} domain alignment.")
 
-    if goal == "Switch Role":
-        st.info("You are positioning for transition. Skill reinforcement and interview volume will matter most.")
-
-    elif goal == "Growth in Current Role":
-        st.info("Focus on vertical deepening + leadership signaling.")
-
-    elif goal == "Salary Benchmark":
-        st.info("Negotiation leverage depends on percentile and tightness.")
-
-    elif goal == "Return After Career Break":
-        st.info("Market re-entry strategy should emphasize refreshed skill alignment.")
+    if career_stage in ["Returning After Career Break", "Fresher / No Clear Direction"]:
+        st.warning("Re-entry strategy: Focus on live projects + certifications to rebuild market credibility.")
 
 
 # ==================================================
@@ -204,18 +215,17 @@ with tab1:
 
 with tab2:
 
-    fig = go.Figure(go.Indicator(
+    gauge = go.Figure(go.Indicator(
         mode="gauge+number",
         value=row["Probability"],
         title={"text": "Interview Probability %"},
         gauge={"axis": {"range": [0, 100]}}
     ))
 
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(gauge, use_container_width=True)
 
     st.metric("Market Tightness %", f"{row['Tightness']:.2f}")
-
-    st.write(f"Demand vs Supply Strength Index: {row['Tightness']:.2f}%")
+    st.write(f"Demand vs Supply Index: {row['Tightness']:.2f}%")
 
 
 # ==================================================
@@ -241,8 +251,6 @@ with tab3:
     if row["Companies"]:
         for comp in row["Companies"]:
             st.write(f"• {comp}")
-    else:
-        st.write("No hiring data available.")
 
 
 # ==================================================
@@ -262,9 +270,9 @@ with tab4:
 
     st.markdown("""
     Strategic Playbook:
-    - Strengthen one high-impact skill every 60 days  
-    - Apply in high tightness regions  
-    - Use percentile for negotiation leverage  
+    - Improve 1 high-impact skill every 60 days  
+    - Target high-tightness markets  
+    - Use percentile leverage in negotiations  
     """)
 
 
@@ -275,28 +283,30 @@ with tab4:
 with tab5:
 
     user_question = st.text_area(
-        "Ask a strategic career question:",
-        placeholder="How do I increase probability in Germany?"
+        "Ask a career strategy question:",
+        placeholder="How can I improve my percentile in Germany?"
     )
 
-    if st.button("Get AI Guidance"):
+    if st.button("Get AI Strategy"):
 
         ai_prompt = f"""
-        User Goal: {goal}
+        Career Stage: {career_stage}
+        Goal: {goal}
         Role: {role}
         Country: {selected_country}
         Resume Score: {row['Resume Score']}
-        Opportunity: {row['Opportunity']}
+        Opportunity Score: {row['Opportunity']}
         Interview Probability: {row['Probability']}
         Skill Gaps: {row['Missing Skills']}
+        Salary: {row['Salary']}
 
-        Question:
+        User Question:
         {user_question}
 
-        Provide structured and actionable guidance.
+        Provide structured, actionable, professional advice.
         """
 
-        response = gpt_service.generate_roadmap(resume_text, role)
+        response = gpt_service.ask_custom(ai_prompt)
 
         st.markdown(response)
 
@@ -306,7 +316,7 @@ with tab5:
 # ==================================================
 
 st.markdown("---")
-st.subheader("Download Executive Report")
+st.subheader("📄 Download Executive Report")
 
 def generate_pdf():
 
@@ -315,7 +325,7 @@ def generate_pdf():
     elements = []
     styles = getSampleStyleSheet()
 
-    elements.append(Paragraph("Career Intelligence Report", styles["Heading1"]))
+    elements.append(Paragraph("Career Intelligence Executive Report", styles["Heading1"]))
     elements.append(Spacer(1, 12))
 
     elements.append(Paragraph(f"Role: {role}", styles["Normal"]))
@@ -328,11 +338,9 @@ def generate_pdf():
     buffer.seek(0)
     return buffer
 
-pdf_file = generate_pdf()
-
 st.download_button(
     label="Download Career Report",
-    data=pdf_file,
+    data=generate_pdf(),
     file_name="career_report.pdf",
     mime="application/pdf"
 )
